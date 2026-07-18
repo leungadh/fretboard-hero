@@ -333,8 +333,17 @@ const LEVELS = [
   { id: "rh1", title: "17 · 🥁 Steady Quarters",  desc: "Strum on every beat — lock in with the click",      mode: "rhythm", bpm: 80, bars: 8, pattern: ["D","","D","","D","","D",""] },
   { id: "rh2", title: "18 · 🥁 Down-Up Eighths",  desc: "Constant down-up strumming, eighth notes",          mode: "rhythm", bpm: 76, bars: 8, pattern: ["D","U","D","U","D","U","D","U"] },
   { id: "rh3", title: "19 · 🥁 The Folk Strum",   desc: "D · D U · U D U — the pattern behind 1000 songs",   mode: "rhythm", bpm: 72, bars: 8, pattern: ["D","","D","U","","U","D","U"] },
+  { id: "up1",    title: "20 · Up the Neck: Bass",    desc: "Strings 6–4, frets 5–9",                pool: frRange([6,5,4], 5, 9),                        win: { lo: 4, hi: 10 } },
+  { id: "up2",    title: "21 · Up the Neck: Treble",  desc: "Strings 3–1, frets 5–9",                pool: frRange([3,2,1], 5, 9),                        win: { lo: 4, hi: 10 } },
+  { id: "dots",   title: "22 · The Landmark Dots",    desc: "Every string — frets 5, 7, 9 and 12",   pool: [6,5,4,3,2,1].flatMap(s => [5,7,9,12].map(f => ({ str: s, fret: f }))), win: { lo: 4, hi: 12 } },
+  { id: "master", title: "23 · Full Fretboard Mastery", desc: "Anywhere on the neck, frets 0–12",    pool: frRange([6,5,4,3,2,1], 0, 12),                 win: { lo: 0, hi: 12 } },
 ];
 function fr(strNum) { return [0,1,2,3,4,5].map(f => ({ str: strNum, fret: f })); }
+function frRange(strs, lo, hi) {
+  const out = [];
+  strs.forEach(s => { for (let f = lo; f <= hi; f++) out.push({ str: s, fret: f }); });
+  return out;
+}
 
 const ROUND_LEN = 10;
 
@@ -585,10 +594,11 @@ function show(name) { for (const k in screens) screens[k].classList.toggle("hidd
 
 /* ================= Level select ================= */
 const STAGES = [
-  { name: "🎯 Stage 1 · Notes on the Fretboard", match: lv => !lv.mode },
+  { name: "🎯 Stage 1 · Notes on the Fretboard", match: lv => !lv.mode && !lv.win },
   { name: "🎸 Stage 2 · Chords",                 match: lv => lv.mode === "chordLearn" || lv.mode === "chordStrum" },
   { name: "🎵 Stage 3 · Songs",                  match: lv => lv.mode === "song" },
   { name: "🥁 Stage 4 · Rhythm",                 match: lv => lv.mode === "rhythm" },
+  { name: "🏆 Stage 5 · Mastery",                match: lv => !lv.mode && !!lv.win },
 ];
 
 function renderMenu() {
@@ -626,20 +636,33 @@ function renderMenu() {
 
 /* ================= Fretboard drawing ================= */
 const NUT_X = 40, BOARD_W = 640, BOARD_TOP = 20, BOARD_H = 150, N_FRETS = 5;
-function fretX(f) { return NUT_X + (f - 0.5) * (BOARD_W / N_FRETS); } // center of fret slot
+function fretX(f, lo = 0, span = N_FRETS) { return NUT_X + (f - lo - 0.5) * (BOARD_W / span); } // center of fret slot
 function stringY(strNum) { return BOARD_TOP + (6 - strNum) * (BOARD_H / 5); } // string 6 top
+const INLAYS = [3, 5, 7, 9, 12]; // 12 gets a double dot
 
-function drawBoard(target, showHint) {
+function drawBoard(target, showHint, lo = 0, hi = N_FRETS) {
   const svg = $("board");
+  const span = hi - lo;
   let el = `<rect x="${NUT_X}" y="${BOARD_TOP - 8}" width="${BOARD_W}" height="${BOARD_H + 16}" rx="6" fill="var(--wood)" opacity="0.35"/>`;
-  el += `<rect x="${NUT_X - 6}" y="${BOARD_TOP - 8}" width="6" height="${BOARD_H + 16}" fill="#d8d3c8"/>`; // nut
-  for (let f = 1; f <= N_FRETS; f++) {
-    const x = NUT_X + f * (BOARD_W / N_FRETS);
+  // nut at fret 0, otherwise a plain heavy fret at the window's left edge
+  el += lo === 0
+    ? `<rect x="${NUT_X - 6}" y="${BOARD_TOP - 8}" width="6" height="${BOARD_H + 16}" fill="#d8d3c8"/>`
+    : `<line x1="${NUT_X}" y1="${BOARD_TOP - 8}" x2="${NUT_X}" y2="${BOARD_TOP + BOARD_H + 8}" stroke="#9aa0b5" stroke-width="4"/>`;
+  for (let f = lo + 1; f <= hi; f++) {
+    const x = NUT_X + (f - lo) * (BOARD_W / span);
     el += `<line x1="${x}" y1="${BOARD_TOP - 8}" x2="${x}" y2="${BOARD_TOP + BOARD_H + 8}" stroke="#9aa0b5" stroke-width="3"/>`;
-    el += `<text x="${fretX(f)}" y="${BOARD_TOP + BOARD_H + 26}" text-anchor="middle" fill="var(--muted)" font-size="12">${f}</text>`;
+    el += `<text x="${fretX(f, lo, span)}" y="${BOARD_TOP + BOARD_H + 26}" text-anchor="middle" fill="var(--muted)" font-size="12">${f}</text>`;
   }
-  el += `<circle cx="${fretX(3)}" cy="${BOARD_TOP + BOARD_H / 2}" r="6" fill="#cfd3e0" opacity="0.4"/>`;
-  el += `<circle cx="${fretX(5)}" cy="${BOARD_TOP + BOARD_H / 2}" r="6" fill="#cfd3e0" opacity="0.4"/>`;
+  INLAYS.forEach(f => {
+    if (f <= lo || f > hi) return;
+    const x = fretX(f, lo, span), midY = BOARD_TOP + BOARD_H / 2;
+    if (f === 12) {
+      el += `<circle cx="${x}" cy="${midY - 30}" r="6" fill="#cfd3e0" opacity="0.4"/>
+             <circle cx="${x}" cy="${midY + 30}" r="6" fill="#cfd3e0" opacity="0.4"/>`;
+    } else {
+      el += `<circle cx="${x}" cy="${midY}" r="6" fill="#cfd3e0" opacity="0.4"/>`;
+    }
+  });
   STRINGS.forEach(s => {
     const y = stringY(s.num);
     const isTarget = target && target.str === s.num;
@@ -649,7 +672,7 @@ function drawBoard(target, showHint) {
   });
   if (target && showHint) {
     const y = stringY(target.str);
-    const x = target.fret === 0 ? NUT_X - 22 : fretX(target.fret);
+    const x = target.fret === 0 ? NUT_X - 22 : fretX(target.fret, lo, span);
     el += `<circle cx="${x}" cy="${y}" r="12" fill="var(--accent2)"/>
            <text x="${x}" y="${y + 4}" text-anchor="middle" fill="#14161f" font-size="12" font-weight="800">${target.fret === 0 ? "0" : target.fret}</text>`;
   }
@@ -810,6 +833,7 @@ function startLevel(level) {
       matchFrames: 0, deadline: 0,
       stringIdx: 0, doneStrings: [], notes: [],
       ticks: [], pendingHit: null, armed: true, lastHitPC: -1,
+      win: level.win || { lo: 0, hi: N_FRETS },
     };
     if (mode === "song") {
       const song = SONGS[level.song];
@@ -891,7 +915,7 @@ function nextNote() {
     $("prompt-note").textContent = midiToName(t.midi);
     $("prompt-where").textContent = `on the ${ordinal(t.str)} string (${strByNum(t.str).name})`;
     $("prompt-feedback").textContent = "Listening…";
-    drawBoard(t, game.hints);
+    drawBoard(t, game.hints, game.win.lo, game.win.hi);
   } else {
     const key = game.seq[game.idx];
     game.notes = chordNotes(key);
@@ -926,7 +950,7 @@ function resolve(hit) {
     if (game.mode === "note") {
       const t = currentTarget();
       $("prompt-feedback").textContent = `✗ It was ${midiToName(t.midi)} — fret ${t.fret} on the ${ordinal(t.str)} string`;
-      drawBoard(t, true); // reveal answer
+      drawBoard(t, true, game.win.lo, game.win.hi); // reveal answer
     } else {
       const key = game.seq[game.idx];
       $("prompt-feedback").textContent = `✗ That was ${key} (${CHORDS[key].name}) — check the diagram and try the next one`;
