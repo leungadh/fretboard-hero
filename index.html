@@ -136,6 +136,7 @@
     padding: 10px 20px; font-size: .95rem; font-weight: 700; cursor: pointer;
   }
   button.secondary { background: var(--panel2); color: var(--text); }
+  select { background: var(--panel2); color: var(--text); border: none; border-radius: 6px; padding: 4px 8px; font-size: .85rem; }
   button:hover { filter: brightness(1.1); }
   .row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
 
@@ -167,6 +168,13 @@
   <div class="toolbar">
     <label class="toggle"><input type="checkbox" id="opt-hints" checked> Show fret hints (turn off once you're confident)</label>
     <label class="toggle"><input type="checkbox" id="opt-slow"> Relaxed timer (15s per note)</label>
+    <label class="toggle">Song speed
+      <select id="opt-speed">
+        <option value="0.5">50%</option>
+        <option value="0.75" selected>75%</option>
+        <option value="1">100%</option>
+      </select>
+    </label>
     <button class="secondary" id="btn-progress">📊 My Progress</button>
     <button class="secondary" id="btn-hall">🏛️ Music Hall</button>
   </div>
@@ -283,6 +291,22 @@ function chordNotes(key) { // playable strings, low → high
 }
 const chordPCs = key => [...new Set(chordNotes(key).map(n => n.midi % 12))];
 
+/* ================= Songs (beat, string, fret) ================= */
+const SONGS = [
+  { id: "smoke", title: "Smoke on the Water", bpm: 112, notes: [
+    [0,6,0],[1,6,3],[2,6,5],[3.5,6,0],[4.5,6,3],[5.5,6,6],[6.5,6,5],
+    [8,6,0],[9,6,3],[10,6,5],[11.5,6,3],[12.5,6,0],
+  ]},
+  { id: "sna", title: "Seven Nation Army", bpm: 120, notes: [
+    [0,4,2],[1.5,4,2],[2,3,0],[3,4,2],[3.5,4,0],[4.5,5,3],[6,5,2],
+    [8,4,2],[9.5,4,2],[10,3,0],[11,4,2],[11.5,4,0],[12.5,5,3],[14,5,2],
+  ]},
+  { id: "ode", title: "Ode to Joy", bpm: 100, notes: [
+    [0,4,2],[1,4,2],[2,4,3],[3,3,0],[4,3,0],[5,4,3],[6,4,2],[7,4,0],
+    [8,5,3],[9,5,3],[10,4,0],[11,4,2],[12,4,2],[13.5,4,0],[14,4,0],
+  ]},
+];
+
 /* ================= Levels ================= */
 const LEVELS = [
   { id: "open",  title: "1 · Open Strings",   desc: "E A D G B E — know your strings", pool: STRINGS.map(s => ({ str: s.num, fret: 0 })) },
@@ -298,6 +322,9 @@ const LEVELS = [
   { id: "chC",    title: "11 · Chords: C + review", desc: "C major, plus all chords mixed",        mode: "chordLearn", chords: ["C", "Em", "Am", "D", "G"] },
   { id: "chg1",   title: "12 · Chord Changes I",   desc: "Strum the chord on cue — Em, Am, D",    mode: "chordStrum", chords: ["Em", "Am", "D"] },
   { id: "chg2",   title: "13 · Chord Changes II",  desc: "All five chords — strum on cue",        mode: "chordStrum", chords: ["Em", "Am", "D", "G", "C"] },
+  { id: "smoke", title: "14 · 🎵 Smoke on the Water", desc: "The riff that starts every guitar journey", mode: "song", song: 0 },
+  { id: "sna",   title: "15 · 🎵 Seven Nation Army",  desc: "The stadium anthem riff",                   mode: "song", song: 1 },
+  { id: "ode",   title: "16 · 🎵 Ode to Joy",         desc: "Beethoven, on your guitar",                 mode: "song", song: 2 },
 ];
 function fr(strNum) { return [0,1,2,3,4,5].map(f => ({ str: strNum, fret: f })); }
 
@@ -723,18 +750,23 @@ function startLevel(level) {
     if (!ok) { show("menu"); return; }
     if (audioCtx.state === "suspended") audioCtx.resume();
     const mode = level.mode || "note";
-    const rounds = mode === "chordLearn" ? 5 : 10;
-    const pool = mode === "note" ? level.pool.slice() : level.chords.slice();
     const seq = [];
-    let last = null;
-    for (let i = 0; i < rounds; i++) {
-      let pick;
-      do { pick = pool[Math.floor(Math.random() * pool.length)]; }
-      while (pool.length > 1 && last !== null && JSON.stringify(pick) === JSON.stringify(last));
-      seq.push(pick); last = pick;
+    let rounds;
+    if (mode === "song") {
+      rounds = SONGS[level.song].notes.length;
+    } else {
+      rounds = mode === "chordLearn" ? 5 : 10;
+      const pool = mode === "note" ? level.pool.slice() : level.chords.slice();
+      let last = null;
+      for (let i = 0; i < rounds; i++) {
+        let pick;
+        do { pick = pool[Math.floor(Math.random() * pool.length)]; }
+        while (pool.length > 1 && last !== null && JSON.stringify(pick) === JSON.stringify(last));
+        seq.push(pick); last = pick;
+      }
     }
     const slow = $("opt-slow").checked;
-    const times = { note: slow ? 15000 : 10000, chordLearn: slow ? 35000 : 25000, chordStrum: slow ? 12000 : 8000 };
+    const times = { note: slow ? 15000 : 10000, chordLearn: slow ? 35000 : 25000, chordStrum: slow ? 12000 : 8000, song: 0 };
     game = {
       level, mode, rounds, seq, idx: 0, score: 0, streak: 0, bestStreak: 0, hits: 0,
       hints: $("opt-hints").checked,
@@ -742,11 +774,38 @@ function startLevel(level) {
       state: "waiting", // waiting | resolved
       matchFrames: 0, deadline: 0,
       stringIdx: 0, doneStrings: [], notes: [],
+      ticks: [], pendingHit: null, armed: true, lastHitPC: -1,
     };
+    if (mode === "song") {
+      const song = SONGS[level.song];
+      const speed = parseFloat($("opt-speed").value);
+      const spb = 60 / (song.bpm * speed);
+      game.song = song; game.speed = speed; game.spb = spb;
+      game.notesArr = song.notes.map(([t, s, f]) => ({
+        time: t * spb, str: s, fret: f, midi: strByNum(s).midi + f, status: "pending",
+      }));
+      game.duration = game.notesArr[game.notesArr.length - 1].time + 1.5;
+      game.startAC = audioCtx.currentTime + 4 * spb + 0.3;
+      // metronome: 4-beat count-in (high) then beats through the song (low)
+      const totalBeats = Math.ceil(game.duration / spb);
+      for (let b = -4; b <= totalBeats; b++) tickAt(game.startAC + b * spb, b < 0);
+    }
     show("game");
     nextNote();
     loop();
   });
+}
+
+function tickAt(atTime, hi) {
+  const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.frequency.value = hi ? 1200 : 800;
+  g.gain.value = 0.12;
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(atTime); o.stop(atTime + 0.05);
+  game.ticks.push(o);
+}
+function stopTicks() {
+  if (game && game.ticks) game.ticks.forEach(o => { try { o.stop(); } catch (e) {} });
 }
 
 function currentTarget() {
@@ -762,6 +821,13 @@ function nextNote() {
   game.deadline = performance.now() + game.noteTime;
   $("prompt-box").className = "prompt";
   $("hud-progress").textContent = `${game.idx + 1}/${game.rounds}`;
+  if (game.mode === "song") {
+    $("prompt-note").textContent = "🎵";
+    $("prompt-where").textContent = `${game.song.title} · ${Math.round(game.speed * 100)}% speed`;
+    $("prompt-feedback").textContent = "Get ready…";
+    $("hud-progress").textContent = `0/${game.rounds}`;
+    return;
+  }
   if (game.mode === "note") {
     const t = currentTarget();
     $("prompt-note").textContent = midiToName(t.midi);
@@ -818,6 +884,7 @@ function resolve(hit) {
 }
 
 function endLevel() {
+  stopTicks();
   cancelAnimationFrame(rafId);
   const acc = game.hits / game.rounds;
   const stars = acc >= 0.9 ? 3 : acc >= 0.7 ? 2 : acc >= 0.5 ? 1 : 0;
@@ -843,7 +910,7 @@ function endLevel() {
   $("res-title").textContent = stars > 0 ? "Level complete!" : "Keep practicing!";
   $("res-stars").textContent = "★".repeat(stars) + "☆".repeat(3 - stars);
   $("res-score").textContent = game.score + " pts";
-  $("res-detail").textContent = `${game.hits}/${game.rounds} ${game.mode === "note" ? "notes" : "chords"} · best streak ${game.bestStreak}` +
+  $("res-detail").textContent = `${game.hits}/${game.rounds} ${game.mode.startsWith("chord") ? "chords" : "notes"} · best streak ${game.bestStreak}` +
     (stars === 0 ? " · get 50%+ to earn a star and unlock the next level" : "");
   show("results");
 }
@@ -851,9 +918,104 @@ function endLevel() {
 /* ================= Main loop ================= */
 const NEEDED_FRAMES = 5; // consecutive matching frames to count a hit
 
+/* ================= Song mode (scrolling highway) ================= */
+const HIT_X = 90, PX_PER_BEAT = 120, HIT_WIN = 0.35, PERFECT_WIN = 0.15;
+
+function drawHighway(now) {
+  let el = `<rect x="0" y="${BOARD_TOP - 8}" width="700" height="${BOARD_H + 16}" rx="6" fill="var(--wood)" opacity="0.25"/>`;
+  STRINGS.forEach(s => {
+    const y = stringY(s.num);
+    el += `<line x1="0" y1="${y}" x2="700" y2="${y}" stroke="#c9cddb" stroke-width="${(7 - s.num) * 0.5 + 1}" opacity="0.5"/>`;
+    el += `<text x="12" y="${y + 4}" fill="var(--muted)" font-size="12" font-weight="700">${s.name.split(" ")[0]}</text>`;
+  });
+  el += `<line x1="${HIT_X}" y1="${BOARD_TOP - 8}" x2="${HIT_X}" y2="${BOARD_TOP + BOARD_H + 8}" stroke="var(--accent)" stroke-width="5" opacity="0.9"/>`;
+  game.notesArr.forEach(n => {
+    const x = HIT_X + ((n.time - now) / game.spb) * PX_PER_BEAT;
+    if (x < -25 || x > 725) return;
+    const y = stringY(n.str);
+    const col = n.status === "hit" ? "var(--accent2)" : n.status === "miss" ? "#555b70" : "var(--accent)";
+    el += `<circle cx="${x}" cy="${y}" r="13" fill="${col}"/>
+           <text x="${x}" y="${y + 4}" text-anchor="middle" fill="#14161f" font-size="12" font-weight="800">${n.fret}</text>`;
+  });
+  $("board").innerHTML = el;
+}
+
+function songFrame() {
+  const now = audioCtx.currentTime - game.startAC;
+  $("timer-fill").style.width = Math.max(0, Math.min(100, 100 * (1 - now / game.duration))) + "%";
+  drawHighway(now);
+
+  if (now < 0) {
+    $("prompt-note").textContent = Math.ceil(-now / game.spb);
+    $("prompt-feedback").textContent = "Count-in…";
+    return;
+  }
+
+  // upcoming note hint
+  const nextN = game.notesArr.find(n => n.status === "pending");
+  if (nextN) {
+    $("prompt-note").textContent = midiToName(nextN.midi);
+    $("prompt-where").textContent = `string ${nextN.str} · fret ${nextN.fret}`;
+  }
+
+  // misses
+  game.notesArr.forEach(n => {
+    if (n.status === "pending" && now > n.time + HIT_WIN) {
+      n.status = "miss";
+      game.streak = 0;
+      $("prompt-feedback").textContent = "Miss — keep going!";
+      $("hud-streak").textContent = game.streak;
+    }
+  });
+
+  // pitch detection against notes inside the hit window
+  analyser.getFloatTimeDomainData(buf);
+  const freq = detectPitch(buf, audioCtx.sampleRate);
+  if (freq === -1) { game.armed = true; } // silence re-arms repeated notes
+  if (freq !== -1) {
+    const { midi } = freqToMidiCents(freq);
+    if ((midi % 12) !== game.lastHitPC) game.armed = true; // a different note also re-arms
+    const cand = game.notesArr.find(n =>
+      n.status === "pending" && Math.abs(now - n.time) <= HIT_WIN &&
+      (midi % 12) === (n.midi % 12) && Math.abs(midi - n.midi) <= 12 &&
+      (game.armed || (n.midi % 12) !== game.lastHitPC));
+    if (cand) {
+      if (game.pendingHit && game.pendingHit.note === cand) game.pendingHit.frames++;
+      else game.pendingHit = { note: cand, frames: 1 };
+      if (game.pendingHit.frames >= 2) {
+        cand.status = "hit";
+        game.hits++;
+        game.streak++;
+        game.bestStreak = Math.max(game.bestStreak, game.streak);
+        const perfect = Math.abs(now - cand.time) <= PERFECT_WIN;
+        const mult = 1 + Math.min(game.streak - 1, 4) * 0.25;
+        const pts = Math.round((perfect ? 150 : 100) * mult);
+        game.score += pts;
+        game.lastHitPC = cand.midi % 12;
+        game.armed = false;
+        $("prompt-feedback").textContent = `${perfect ? "🎯 PERFECT!" : "✓ Good!"} +${pts}`;
+        $("hud-score").textContent = game.score;
+        $("hud-streak").textContent = game.streak;
+        $("hud-progress").textContent = `${game.hits}/${game.rounds}`;
+        game.pendingHit = null;
+      }
+    } else if (game.pendingHit) game.pendingHit = null;
+  }
+
+  if (now > game.duration) {
+    game.state = "resolved";
+    endLevel();
+  }
+}
+
 function loop() {
   rafId = requestAnimationFrame(loop);
   if (!game || !micReady) return;
+
+  if (game.mode === "song") {
+    if (game.state === "waiting") songFrame();
+    return;
+  }
 
   // timer
   if (game.state === "waiting") {
@@ -936,8 +1098,8 @@ function loop() {
 }
 
 /* ================= Buttons ================= */
-$("btn-skip").onclick = () => resolve(false);
-$("btn-quit").onclick = () => { cancelAnimationFrame(rafId); show("menu"); renderMenu(); };
+$("btn-skip").onclick = () => { if (game && game.mode !== "song") resolve(false); };
+$("btn-quit").onclick = () => { stopTicks(); cancelAnimationFrame(rafId); show("menu"); renderMenu(); greet(); };
 $("btn-retry").onclick = () => startLevel(game.level);
 $("btn-menu").onclick = () => { show("menu"); renderMenu(); greet(); };
 $("btn-progress").onclick = () => { renderProgress(); show("progress"); };

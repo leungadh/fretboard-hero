@@ -80,7 +80,7 @@ all chord tones. SVG rendering for the fretboard, chord diagrams, and music hall
 - [x] Chord practice (Em, Am, D, G, C): string-by-string learn mode + strummed chord-change drills
 - [x] Token economy, shop, and decoratable music hall
 - [x] Progress dashboard with export/import
-- [ ] Scrolling "Guitar Hero"-style song mode
+- [x] Scrolling "Guitar Hero"-style song mode — 3 riffs (Smoke on the Water, Seven Nation Army, Ode to Joy) with 50/75/100% speed, metronome count-in, and Perfect/Good timing scores
 - [ ] Metronome / strumming rhythm trainer
 - [ ] Higher frets (5–12) and full fretboard levels
 
