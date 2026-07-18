@@ -63,6 +63,13 @@ so a server is required for Chrome.)
 > **System Settings → Privacy & Security → Microphone**, then fully restart the browser.
 > Also close other apps that may hold the mic (Zoom, FaceTime, etc.).
 
+### On iPhone / iPad
+
+Host the repo on GitHub Pages (Settings → Pages → deploy from `main`), open the URL in
+Safari, then **Share → Add to Home Screen** — the game installs as a full-screen app with
+its own icon, works offline after the first load, and keeps the screen awake during
+lessons. Mic tip: the iPhone mic is at the bottom edge — point it toward the guitar.
+
 ## How to Play
 
 1. Tune your guitar (the tuner at the bottom of the game screen works for this)

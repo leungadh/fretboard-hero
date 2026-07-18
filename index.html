@@ -3,6 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#14161f">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Fretboard">
 <title>Fretboard Hero — Guitar Note Trainer</title>
 <style>
   :root {
@@ -865,6 +871,7 @@ function startLevel(level) {
       for (let b = -4; b < level.bars * 4; b++)
         tickAt(game.startAC + b * spb, b < 0 || b % 4 === 0); // accent count-in and beat 1
     }
+    keepAwake(true);
     show("game");
     nextNote();
     loop();
@@ -966,6 +973,7 @@ function resolve(hit) {
 }
 
 function endLevel() {
+  keepAwake(false);
   stopTicks();
   cancelAnimationFrame(rafId);
   const acc = game.hits / game.rounds;
@@ -1270,7 +1278,7 @@ function loop() {
 
 /* ================= Buttons ================= */
 $("btn-skip").onclick = () => { if (game && (game.mode === "note" || game.mode.startsWith("chord"))) resolve(false); };
-$("btn-quit").onclick = () => { stopTicks(); cancelAnimationFrame(rafId); show("menu"); renderMenu(); greet(); };
+$("btn-quit").onclick = () => { keepAwake(false); stopTicks(); cancelAnimationFrame(rafId); show("menu"); renderMenu(); greet(); };
 $("btn-retry").onclick = () => startLevel(game.level);
 $("btn-menu").onclick = () => { show("menu"); renderMenu(); greet(); };
 $("btn-progress").onclick = () => { renderProgress(); show("progress"); };
@@ -1309,6 +1317,21 @@ $("import-file").onchange = e => {
   };
   reader.readAsText(file);
 };
+
+/* ================= PWA: offline + keep screen awake ================= */
+if ("serviceWorker" in navigator && location.protocol === "https:") {
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}
+let wakeLock = null;
+async function keepAwake(on) {
+  try {
+    if (on && "wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen");
+    else if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
+  } catch (e) {}
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && game && game.state === "waiting") keepAwake(true);
+});
 
 renderMenu();
 greet();

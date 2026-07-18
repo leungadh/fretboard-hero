@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1e2230"/><stop offset="1" stop-color="#14161f"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="10" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="110" fill="url(#bg)"/>
+  <!-- strings -->
+  <line x1="70" y1="150" x2="442" y2="150" stroke="#c9cddb" stroke-width="6" opacity="0.5"/>
+  <line x1="70" y1="215" x2="442" y2="215" stroke="#c9cddb" stroke-width="8" opacity="0.55"/>
+  <line x1="70" y1="280" x2="442" y2="280" stroke="#c9cddb" stroke-width="10" opacity="0.6"/>
+  <line x1="70" y1="345" x2="442" y2="345" stroke="#c9cddb" stroke-width="12" opacity="0.65"/>
+  <!-- frets -->
+  <line x1="150" y1="115" x2="150" y2="380" stroke="#4a3f6b" stroke-width="10"/>
+  <line x1="270" y1="115" x2="270" y2="380" stroke="#4a3f6b" stroke-width="10"/>
+  <line x1="390" y1="115" x2="390" y2="380" stroke="#4a3f6b" stroke-width="10"/>
+  <!-- note gems -->
+  <circle cx="210" cy="215" r="44" fill="#f5a623" filter="url(#glow)"/>
+  <text x="210" y="232" text-anchor="middle" font-family="Arial Black, Arial" font-size="48" font-weight="900" fill="#14161f">3</text>
+  <circle cx="330" cy="345" r="36" fill="#4cd681" filter="url(#glow)"/>
+  <text x="330" y="359" text-anchor="middle" font-family="Arial Black, Arial" font-size="40" font-weight="900" fill="#14161f">1</text>
+</svg>
