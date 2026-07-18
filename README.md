@@ -1,3 +1,5 @@
+![Fretboard Hero](assets/banner.svg)
+
 # 🎸 Fretboard Hero
 
 A gamified guitar practice web app for beginners — your guitar is the controller. Inspired by Yousician.
