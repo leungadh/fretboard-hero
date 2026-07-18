@@ -18,19 +18,27 @@ Learn where every note lives on the fretboard by playing them on a real guitar. 
 
 The app is a single HTML file with no dependencies.
 
-### Option 1: Safari (easiest)
+### Option 1: One-click launcher (macOS, recommended)
+
+Double-click `start.command` — it starts a local server and opens the game at
+<http://localhost:8000>. Leave the Terminal window open while playing.
+(First time: if macOS blocks it, right-click → Open. If needed, run
+`chmod +x start.command` once.)
+
+### Option 2: Safari direct
 
 Open `index.html` directly in Safari — it allows microphone access on local files.
+Note: progress is stored per origin, so pick one option and stick with it
+(or use Export/Import on the Progress screen to move your data).
 
-### Option 2: Local server (Chrome/any browser)
-
-Chrome blocks the mic on `file://` URLs, so serve it over localhost:
+### Option 3: Manual local server
 
 ```bash
 python3 -m http.server 8000
 ```
 
-Then visit <http://localhost:8000>.
+Then visit <http://localhost:8000>. (Chrome blocks the mic on `file://` URLs,
+so a server is required for Chrome.)
 
 > **macOS note:** if you get a mic error (`AbortError`), enable your browser under
 > **System Settings → Privacy & Security → Microphone**, then fully restart the browser.
