@@ -51,6 +51,34 @@
   .bars .bar span { position: absolute; top: -18px; left: 50%; transform: translateX(-50%); font-size: .65rem; color: var(--muted); }
   .pmsg { font-size: 1.05rem; margin: 4px 0 16px; line-height: 1.4; }
 
+  /* Music hall & shop */
+  .hall-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .tokens-badge { background: var(--panel); border: 1px solid var(--accent); color: var(--accent);
+    border-radius: 20px; padding: 6px 14px; font-weight: 800; font-size: 1rem; }
+  .hall-wrap { background: var(--panel); border-radius: 14px; padding: 10px; margin-bottom: 8px; }
+  svg.hall { width: 100%; height: auto; display: block; border-radius: 10px; }
+  .hall-note { color: var(--muted); font-size: .8rem; margin: 4px 0 16px; }
+  .banner { text-align: center; font-size: 1.1rem; color: var(--accent); font-weight: 800; margin-bottom: 10px; }
+  .shop-cat { font-size: .8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin: 18px 0 8px; }
+  .shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px,1fr)); gap: 10px; }
+  .shop-card { background: var(--panel); border: 1px solid #333a52; border-radius: 12px; padding: 12px;
+    text-align: center; cursor: pointer; transition: transform .1s, border-color .1s; }
+  .shop-card:hover { transform: translateY(-2px); border-color: var(--accent); }
+  .shop-card.owned { border-color: var(--accent2); cursor: default; opacity: .85; }
+  .shop-card.cant { opacity: .5; cursor: not-allowed; }
+  .shop-card .emoji { font-size: 2.2rem; }
+  .shop-card .name { font-size: .85rem; font-weight: 700; margin: 4px 0 2px; }
+  .shop-card .price { font-size: .8rem; color: var(--accent); font-weight: 700; }
+  .shop-card .note { font-size: .7rem; color: var(--muted); margin-top: 2px; }
+  .toast { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); background: var(--accent2);
+    color: #14161f; font-weight: 800; padding: 10px 22px; border-radius: 24px; z-index: 50;
+    opacity: 0; transition: opacity .3s; pointer-events: none; }
+  .toast.on { opacity: 1; }
+  svg .bob { animation: bob 1.6s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+  @keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+  .res-tokens { font-size: 1.2rem; color: var(--accent); font-weight: 800; margin-bottom: 6px; }
+  .res-goal { font-size: .9rem; color: var(--muted); margin-bottom: 14px; }
+
   /* Level select */
   .levels { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px,1fr)); gap: 12px; margin-top: 12px; }
   .level-card {
@@ -140,7 +168,22 @@
     <label class="toggle"><input type="checkbox" id="opt-hints" checked> Show fret hints (turn off once you're confident)</label>
     <label class="toggle"><input type="checkbox" id="opt-slow"> Relaxed timer (15s per note)</label>
     <button class="secondary" id="btn-progress">📊 My Progress</button>
+    <button class="secondary" id="btn-hall">🏛️ Music Hall</button>
   </div>
+</div>
+
+<!-- ============ MUSIC HALL & SHOP ============ -->
+<div id="screen-hall" class="screen hidden">
+  <div class="hall-head">
+    <h2>🏛️ Andy's Music Hall</h2>
+    <div class="tokens-badge" id="hall-tokens">🪙 0</div>
+  </div>
+  <div class="banner hidden" id="hall-banner"></div>
+  <div class="hall-wrap"><svg class="hall" id="hall-svg" viewBox="0 0 800 450"></svg></div>
+  <div class="hall-note" id="hall-note"></div>
+  <div id="shop"></div>
+  <div class="row" style="margin-top:16px"><button id="btn-hall-back">Back to levels</button></div>
+  <div class="toast" id="toast"></div>
 </div>
 
 <!-- ============ PROGRESS ============ -->
@@ -197,6 +240,8 @@
     <div class="bigstars" id="res-stars">★★★</div>
     <div class="score" id="res-score">0</div>
     <div class="pmsg" id="res-msg"></div>
+    <div class="res-tokens" id="res-tokens"></div>
+    <div class="res-goal" id="res-goal"></div>
     <p id="res-detail"></p>
     <div class="row">
       <button id="btn-retry">Retry</button>
@@ -244,8 +289,13 @@ function saveProgress() { try { localStorage.setItem("fh-progress", JSON.stringi
 
 /* ================= Player profile & session history ================= */
 const PLAYER = "Andy";
-let stats = { sessions: [], dayStreak: 0, lastDay: null };
+let stats = { sessions: [], dayStreak: 0, lastDay: null, tokens: 0, owned: [] };
 try { stats = Object.assign(stats, JSON.parse(localStorage.getItem("fh-stats") || "{}")); } catch (e) {}
+// migration: grant retroactive tokens for lessons played before the token system existed
+if (stats.tokens === 0 && stats.owned.length === 0 && stats.sessions.length > 0 && !stats.migrated) {
+  stats.tokens = stats.sessions.reduce((a, s) => a + [5, 10, 15, 25][s.stars || 0], 0);
+  stats.migrated = true;
+}
 function saveStats() { try { localStorage.setItem("fh-stats", JSON.stringify(stats)); } catch (e) {} }
 const todayStr = () => new Date().toISOString().slice(0, 10);
 
@@ -260,6 +310,43 @@ function recordSession(levelId, score, hits, total, stars) {
   if (stats.sessions.length > 300) stats.sessions = stats.sessions.slice(-300);
   saveStats();
 }
+
+/* ================= Shop catalog ================= */
+const ITEMS = [
+  // instruments (placed on stage)
+  { id: "mic",     n: "Stage Mic",       e: "🎤", cat: "instrument", p: 50,  x: 355, y: 360, s: 30 },
+  { id: "guitar",  n: "Acoustic Guitar", e: "🎸", cat: "instrument", p: 60,  x: 265, y: 350, s: 38 },
+  { id: "violin",  n: "Violin",          e: "🎻", cat: "instrument", p: 80,  x: 490, y: 350, s: 36 },
+  { id: "trumpet", n: "Trumpet",         e: "🎺", cat: "instrument", p: 90,  x: 575, y: 350, s: 34 },
+  { id: "sax",     n: "Saxophone",       e: "🎷", cat: "instrument", p: 110, x: 655, y: 350, s: 36 },
+  { id: "drums",   n: "Drum Kit",        e: "🥁", cat: "instrument", p: 130, x: 405, y: 315, s: 42 },
+  { id: "piano",   n: "Grand Piano",     e: "🎹", cat: "instrument", p: 250, x: 150, y: 340, s: 48 },
+  // musicians (take the stage once their instrument is owned)
+  { id: "singer",  n: "Singer",            e: "👩‍🎤", cat: "musician", p: 60,  needs: "mic" },
+  { id: "gtr",     n: "Guitarist",         e: "👨‍🎤", cat: "musician", p: 70,  needs: "guitar" },
+  { id: "rabV",    n: "Rabbit Violinist",  e: "🐰", cat: "musician", p: 90,  needs: "violin" },
+  { id: "foxT",    n: "Fox Trumpeter",     e: "🦊", cat: "musician", p: 90,  needs: "trumpet" },
+  { id: "panS",    n: "Panda Saxophonist", e: "🐼", cat: "musician", p: 100, needs: "sax" },
+  { id: "bearD",   n: "Bear Drummer",      e: "🐻", cat: "musician", p: 120, needs: "drums" },
+  { id: "catP",    n: "Cat Pianist",       e: "🐱", cat: "musician", p: 200, needs: "piano" },
+  // decorations
+  { id: "plant",    n: "Potted Plant",      e: "🪴", cat: "decor", p: 20,  x: 55,  y: 405, s: 36 },
+  { id: "poster",   n: "Concert Poster",    e: "🖼️", cat: "decor", p: 25,  x: 140, y: 165, s: 36 },
+  { id: "candle",   n: "Candelabra",        e: "🕯️", cat: "decor", p: 30,  x: 215, y: 400, s: 28 },
+  { id: "balloons", n: "Balloons",          e: "🎈", cat: "decor", p: 30,  x: 70,  y: 175, s: 36 },
+  { id: "roses",    n: "Rose Bouquet",      e: "🌹", cat: "decor", p: 35,  x: 700, y: 395, s: 30 },
+  { id: "lantern",  n: "Paper Lanterns",    e: "🏮", cat: "decor", p: 40,  multi: [[120,115],[680,115]], s: 30 },
+  { id: "vase",     n: "Antique Vase",      e: "🏺", cat: "decor", p: 45,  x: 748, y: 405, s: 34 },
+  { id: "spot",     n: "Spotlights",        e: "💡", cat: "decor", p: 50,  multi: [[255,62],[550,62]], s: 28 },
+  { id: "lights",   n: "Fairy Lights",      e: "✨", cat: "decor", p: 60,  multi: [[200,45],[400,32],[600,45]], s: 26 },
+  { id: "clock",    n: "Grandfather Clock", e: "🕰️", cat: "decor", p: 80,  x: 736, y: 205, s: 40 },
+  { id: "crest",    n: "Golden Crest",      e: "👑", cat: "decor", p: 100, x: 660, y: 155, s: 32 },
+  { id: "disco",    n: "Disco Ball",        e: "🪩", cat: "decor", p: 120, x: 400, y: 80,  s: 40 },
+  { id: "curtains", n: "Velvet Curtains",   e: "🎭", cat: "decor", p: 150, special: "curtains" },
+];
+const item = id => ITEMS.find(i => i.id === id);
+const owns = id => stats.owned.includes(id);
+const CAT_LABELS = { instrument: "🎼 Instruments", musician: "🎭 Musicians", decor: "🏛️ Decorations" };
 
 /* ================= Encouragement ================= */
 const CHEERS = {
@@ -294,7 +381,116 @@ function greet() {
   const hitsTotal = stats.sessions.reduce((a, s) => a + s.hits, 0);
   $("greet-sub").textContent = n === 0
     ? "Ready for your first lesson? Grab your guitar!"
-    : `🔥 ${stats.dayStreak}-day streak · ${n} lessons · ${hitsTotal} notes nailed. ${stats.lastDay === todayStr() ? "Great to see you back today!" : "Let's keep the streak alive!"}`;
+    : `🔥 ${stats.dayStreak}-day streak · ${n} lessons · ${hitsTotal} notes nailed · 🪙 ${stats.tokens} tokens. ${stats.lastDay === todayStr() ? "Great to see you back today!" : "Let's keep the streak alive!"}`;
+}
+
+/* ================= Music hall ================= */
+function fullBand() {
+  return ITEMS.filter(i => i.cat === "musician").every(m => owns(m.id) && owns(m.needs));
+}
+
+function renderHall() {
+  $("hall-tokens").textContent = `🪙 ${stats.tokens}`;
+  const svg = $("hall-svg");
+  let el = `
+    <defs>
+      <linearGradient id="wall" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#322a4a"/><stop offset="1" stop-color="#241f36"/>
+      </linearGradient>
+      <linearGradient id="floor" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#5a4128"/><stop offset="1" stop-color="#3d2c1b"/>
+      </linearGradient>
+    </defs>
+    <rect width="800" height="320" fill="url(#wall)"/>
+    <rect y="320" width="800" height="130" fill="url(#floor)"/>
+    <ellipse cx="400" cy="320" rx="330" ry="26" fill="#000" opacity="0.18"/>
+    <path d="M60,300 Q400,180 740,300" stroke="#4a3f6b" stroke-width="3" fill="none" opacity="0.6"/>`;
+  if (owns("curtains")) {
+    el += `
+      <path d="M0,0 L120,0 Q75,150 105,320 L0,320 Z" fill="#8c2333"/>
+      <path d="M800,0 L680,0 Q725,150 695,320 L800,320 Z" fill="#8c2333"/>
+      <path d="M0,0 L800,0 L800,34 Q400,64 0,34 Z" fill="#a62c3e"/>`;
+  }
+  let delay = 0;
+  ITEMS.forEach(it => {
+    if (!owns(it.id) || it.special) return;
+    if (it.cat === "musician") {
+      if (!owns(it.needs)) return;
+      const host = item(it.needs);
+      el += `<text x="${host.x}" y="${host.y - 42}" font-size="34" text-anchor="middle" class="bob" style="animation-delay:${delay}s">${it.e}</text>`;
+      delay += 0.25;
+    } else {
+      const spots = it.multi || [[it.x, it.y]];
+      spots.forEach(([x, y]) => { el += `<text x="${x}" y="${y}" font-size="${it.s}" text-anchor="middle">${it.e}</text>`; });
+    }
+  });
+  if (fullBand()) {
+    el += `<text x="400" y="140" font-size="22" text-anchor="middle" fill="#f5a623" font-weight="800">🎉 FULL HOUSE — BRAVO, ${PLAYER.toUpperCase()}! 🎉</text>`;
+    for (let i = 0; i < 8; i++) {
+      el += `<text x="${90 + i * 90}" y="440" font-size="24" text-anchor="middle" class="bob" style="animation-delay:${i * 0.12}s">👏</text>`;
+    }
+    $("hall-banner").classList.remove("hidden");
+    $("hall-banner").textContent = "Your full band is on stage — the crowd loves you! 🌟";
+  } else {
+    $("hall-banner").classList.add("hidden");
+  }
+  svg.innerHTML = el;
+  const waiting = ITEMS.filter(i => i.cat === "musician" && owns(i.id) && !owns(i.needs));
+  $("hall-note").textContent = waiting.length
+    ? "Waiting backstage: " + waiting.map(m => `${m.e} ${m.n} (needs ${item(m.needs).n})`).join(" · ")
+    : stats.owned.length === 0 ? "Your hall is empty — finish lessons to earn tokens, then start decorating!" : "";
+}
+
+function renderShop() {
+  let html = "";
+  ["instrument", "musician", "decor"].forEach(cat => {
+    html += `<div class="shop-cat">${CAT_LABELS[cat]}</div><div class="shop-grid">`;
+    ITEMS.filter(i => i.cat === cat).forEach(it => {
+      const owned = owns(it.id);
+      const afford = stats.tokens >= it.p;
+      const cls = owned ? "owned" : afford ? "" : "cant";
+      const note = it.needs ? (owns(it.needs) ? "plays the " + item(it.needs).n : "needs " + item(it.needs).n) : "";
+      html += `<div class="shop-card ${cls}" data-id="${it.id}">
+        <div class="emoji">${it.e}</div><div class="name">${it.n}</div>
+        <div class="price">${owned ? "✓ Owned" : "🪙 " + it.p}</div>
+        ${note ? `<div class="note">${note}</div>` : ""}</div>`;
+    });
+    html += `</div>`;
+  });
+  $("shop").innerHTML = html;
+  document.querySelectorAll(".shop-card").forEach(card => {
+    card.onclick = () => buy(card.dataset.id);
+  });
+}
+
+let toastTimer = null;
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.classList.add("on");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("on"), 2200);
+}
+
+function buy(id) {
+  const it = item(id);
+  if (owns(id)) return;
+  if (stats.tokens < it.p) { toast(`Not enough tokens — ${it.p - stats.tokens} more for the ${it.n}!`); return; }
+  stats.tokens -= it.p;
+  stats.owned.push(id);
+  saveStats();
+  const paired = it.needs && owns(it.needs);
+  toast(`${it.e} ${it.n} purchased!${paired ? " They take the stage! 🎶" : it.needs ? ` (waiting for a ${item(it.needs).n})` : ""}`);
+  renderHall(); renderShop();
+}
+
+function nextGoal() {
+  const unowned = ITEMS.filter(i => !owns(i.id)).sort((a, b) => a.p - b.p);
+  if (!unowned.length) return "Your hall is complete — you collected everything! 🏆";
+  const affordable = unowned.filter(i => stats.tokens >= i.p).pop();
+  if (affordable) return `You can afford the ${affordable.e} ${affordable.n} — visit your Music Hall! 🏛️`;
+  const cheapest = unowned[0];
+  return `${cheapest.p - stats.tokens} more tokens for the ${cheapest.e} ${cheapest.n} — keep going!`;
 }
 
 /* ================= Progress screen ================= */
@@ -328,7 +524,7 @@ function renderProgress() {
 
 /* ================= UI refs ================= */
 const $ = id => document.getElementById(id);
-const screens = { menu: $("screen-menu"), game: $("screen-game"), results: $("screen-results"), progress: $("screen-progress") };
+const screens = { menu: $("screen-menu"), game: $("screen-game"), results: $("screen-results"), progress: $("screen-progress"), hall: $("screen-hall") };
 function show(name) { for (const k in screens) screens[k].classList.toggle("hidden", k !== name); }
 
 /* ================= Level select ================= */
@@ -534,7 +730,18 @@ function endLevel() {
   const prev = progress[game.level.id] || 0;
   if (stars > prev) { progress[game.level.id] = stars; saveProgress(); }
   const prevBest = Math.max(0, ...stats.sessions.filter(s => s.lv === game.level.id).map(s => s.score));
+  const firstToday = stats.lastDay !== todayStr();
   recordSession(game.level.id, game.score, game.hits, ROUND_LEN, stars);
+  // tokens
+  let earn = [5, 10, 15, 25][stars];
+  const bonuses = [];
+  if (firstToday) { earn += 10; bonuses.push("+10 first lesson today"); }
+  if (game.score > prevBest && prevBest > 0) { earn += 5; bonuses.push("+5 new best"); }
+  if (stats.dayStreak >= 3) { earn += 5; bonuses.push(`+5 streak x${stats.dayStreak}`); }
+  stats.tokens += earn;
+  saveStats();
+  $("res-tokens").textContent = `🪙 +${earn} tokens (balance: ${stats.tokens})${bonuses.length ? " · " + bonuses.join(" · ") : ""}`;
+  $("res-goal").textContent = nextGoal();
   let msg = pick(CHEERS[stars]);
   if (game.score > prevBest && prevBest > 0) msg = "🏆 New personal best! " + msg;
   if (stats.dayStreak >= 3) msg += ` (${stats.dayStreak} days in a row — that's how skills are built!)`;
@@ -599,6 +806,8 @@ $("btn-retry").onclick = () => startLevel(game.level);
 $("btn-menu").onclick = () => { show("menu"); renderMenu(); greet(); };
 $("btn-progress").onclick = () => { renderProgress(); show("progress"); };
 $("btn-progress-back").onclick = () => { show("menu"); renderMenu(); greet(); };
+$("btn-hall").onclick = () => { renderHall(); renderShop(); show("hall"); };
+$("btn-hall-back").onclick = () => { show("menu"); renderMenu(); greet(); };
 
 /* ================= Export / Import ================= */
 $("btn-export").onclick = () => {
@@ -620,7 +829,7 @@ $("import-file").onchange = e => {
       const data = JSON.parse(reader.result);
       if (data.app !== "fretboard-hero" || !data.stats || !data.progress) throw new Error("bad format");
       progress = data.progress;
-      stats = Object.assign({ sessions: [], dayStreak: 0, lastDay: null }, data.stats);
+      stats = Object.assign({ sessions: [], dayStreak: 0, lastDay: null, tokens: 0, owned: [] }, data.stats);
       saveProgress(); saveStats();
       renderProgress();
       alert(`Welcome back, ${PLAYER}! Imported ${stats.sessions.length} lessons.`);
