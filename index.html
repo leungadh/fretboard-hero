@@ -80,6 +80,11 @@
   .res-goal { font-size: .9rem; color: var(--muted); margin-bottom: 14px; }
 
   /* Level select */
+  .stage-head { display: flex; justify-content: space-between; align-items: baseline;
+    margin: 22px 0 10px; padding-bottom: 6px; border-bottom: 1px solid #2c3247; }
+  .stage-head h2 { font-size: 1.05rem; }
+  .stage-head .stage-stars { font-size: .8rem; color: var(--accent); font-weight: 700; }
+  .stage-head .stage-locked { font-size: .8rem; color: var(--muted); }
   .levels { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px,1fr)); gap: 12px; margin-top: 12px; }
   .level-card {
     background: var(--panel); border: 1px solid #333a52; border-radius: 12px;
@@ -576,18 +581,42 @@ const screens = { menu: $("screen-menu"), game: $("screen-game"), results: $("sc
 function show(name) { for (const k in screens) screens[k].classList.toggle("hidden", k !== name); }
 
 /* ================= Level select ================= */
+const STAGES = [
+  { name: "🎯 Stage 1 · Notes on the Fretboard", match: lv => !lv.mode },
+  { name: "🎸 Stage 2 · Chords",                 match: lv => lv.mode === "chordLearn" || lv.mode === "chordStrum" },
+  { name: "🎵 Stage 3 · Songs",                  match: lv => lv.mode === "song" },
+];
+
 function renderMenu() {
   const wrap = $("levels");
   wrap.innerHTML = "";
-  LEVELS.forEach((lv, i) => {
-    const unlocked = i === 0 || (progress[LEVELS[i-1].id] || 0) >= 1;
-    const stars = progress[lv.id] || 0;
-    const card = document.createElement("div");
-    card.className = "level-card" + (unlocked ? "" : " locked");
-    card.innerHTML = `<h3>${lv.title}</h3><p>${lv.desc}</p>
-      <div class="stars">${"★".repeat(stars)}${"☆".repeat(3 - stars)}${unlocked ? "" : " 🔒"}</div>`;
-    if (unlocked) card.onclick = () => startLevel(lv);
-    wrap.appendChild(card);
+  wrap.style.display = "block"; // stages manage their own grids
+  STAGES.forEach(stage => {
+    const levels = LEVELS.filter(stage.match);
+    const earned = levels.reduce((a, lv) => a + (progress[lv.id] || 0), 0);
+    const firstIdx = LEVELS.indexOf(levels[0]);
+    const stageUnlocked = firstIdx === 0 || (progress[LEVELS[firstIdx - 1].id] || 0) >= 1;
+    const head = document.createElement("div");
+    head.className = "stage-head";
+    head.innerHTML = `<h2>${stage.name}</h2>` + (stageUnlocked
+      ? `<span class="stage-stars">★ ${earned}/${levels.length * 3}</span>`
+      : `<span class="stage-locked">🔒 finish the previous stage to unlock</span>`);
+    wrap.appendChild(head);
+    const grid = document.createElement("div");
+    grid.className = "levels";
+    grid.style.marginTop = "0";
+    levels.forEach(lv => {
+      const i = LEVELS.indexOf(lv);
+      const unlocked = i === 0 || (progress[LEVELS[i - 1].id] || 0) >= 1;
+      const stars = progress[lv.id] || 0;
+      const card = document.createElement("div");
+      card.className = "level-card" + (unlocked ? "" : " locked");
+      card.innerHTML = `<h3>${lv.title}</h3><p>${lv.desc}</p>
+        <div class="stars">${"★".repeat(stars)}${"☆".repeat(3 - stars)}${unlocked ? "" : " 🔒"}</div>`;
+      if (unlocked) card.onclick = () => startLevel(lv);
+      grid.appendChild(card);
+    });
+    wrap.appendChild(grid);
   });
 }
 
