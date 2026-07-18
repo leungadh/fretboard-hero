@@ -403,6 +403,12 @@ const ITEMS = [
   { id: "panS",    n: "Panda Saxophonist", e: "🐼", cat: "musician", p: 100, needs: "sax" },
   { id: "bearD",   n: "Bear Drummer",      e: "🐻", cat: "musician", p: 120, needs: "drums" },
   { id: "catP",    n: "Cat Pianist",       e: "🐱", cat: "musician", p: 200, needs: "piano" },
+  // stage backgrounds (own several, tap to switch)
+  { id: "sunset",   n: "Sunset Stage", e: "🌅", cat: "background", p: 60 },
+  { id: "neon",     n: "Neon City",    e: "🌆", cat: "background", p: 80 },
+  { id: "starry",   n: "Starry Night", e: "🌌", cat: "background", p: 100 },
+  { id: "arena",    n: "Rock Arena",   e: "🔥", cat: "background", p: 120 },
+  { id: "festival", n: "Festival",     e: "🎪", cat: "background", p: 150 },
   // decorations
   { id: "plant",    n: "Potted Plant",      e: "🪴", cat: "decor", p: 20,  x: 55,  y: 405, s: 36 },
   { id: "poster",   n: "Concert Poster",    e: "🖼️", cat: "decor", p: 25,  x: 140, y: 165, s: 36 },
@@ -420,7 +426,46 @@ const ITEMS = [
 ];
 const item = id => ITEMS.find(i => i.id === id);
 const owns = id => stats.owned.includes(id);
-const CAT_LABELS = { instrument: "🎼 Instruments", musician: "🎭 Musicians", decor: "🏛️ Decorations" };
+const CAT_LABELS = { instrument: "🎼 Instruments", musician: "🎭 Musicians", background: "🎨 Stage Backgrounds", decor: "🏛️ Decorations" };
+
+/* Hall background themes: wall/floor gradient stops + optional scenery */
+const BACKGROUNDS = {
+  default: { wt: "#322a4a", wb: "#241f36", ft: "#5a4128", fb: "#3d2c1b" },
+  sunset:  { wt: "#c77b4a", wb: "#6b2e4a", ft: "#5a3a28", fb: "#3d241b",
+    extra: () => `<circle cx="400" cy="290" r="95" fill="#f5d34c" opacity="0.22"/>
+                  <circle cx="400" cy="290" r="55" fill="#f5d34c" opacity="0.18"/>` },
+  neon:    { wt: "#161b2e", wb: "#0d1020", ft: "#2a2438", fb: "#1a1626",
+    extra: () => {
+      let s = "";
+      const bld = [[30,90,70],[120,60,110],[210,80,80],[310,50,130],[420,90,95],[530,65,120],[640,85,75],[730,60,105]];
+      bld.forEach(([x,w,h],bi) => {
+        s += `<rect x="${x}" y="${300-h}" width="${w}" height="${h}" fill="#1f2540"/>`;
+        for (let i = 0; i < 6; i++)
+          s += `<rect x="${x + 8 + (i % 2) * (w/2)}" y="${300 - h + 10 + Math.floor(i/2) * 22}" width="8" height="10" fill="${(i+bi) % 3 ? "#f5a623" : "#4da3ff"}" opacity="0.8"/>`;
+      });
+      return s;
+    } },
+  starry:  { wt: "#1a2a5c", wb: "#0d1430", ft: "#3d3450", fb: "#241b3d",
+    extra: () => {
+      let s = `<circle cx="690" cy="60" r="26" fill="#e8e4d8" opacity="0.8"/><circle cx="678" cy="52" r="22" fill="#1a2a5c"/>`;
+      for (let i = 0; i < 26; i++) s += `<circle cx="${(i * 137) % 780 + 10}" cy="${(i * 89) % 270 + 8}" r="${(i % 3) + 1}" fill="#fff" opacity="${0.3 + (i % 4) * 0.15}"/>`;
+      return s;
+    } },
+  arena:   { wt: "#3a1220", wb: "#1d0a12", ft: "#2e1b12", fb: "#1d120c",
+    extra: () => `<polygon points="180,0 260,0 420,320 280,320" fill="#fff" opacity="0.10"/>
+                  <polygon points="540,0 620,0 520,320 380,320" fill="#fff" opacity="0.10"/>
+                  <circle cx="160" cy="20" r="14" fill="#f5d34c" opacity="0.6"/>
+                  <circle cx="640" cy="20" r="14" fill="#f5d34c" opacity="0.6"/>` },
+  festival: { wt: "#1d4a3a", wb: "#0f2a20", ft: "#4a5a28", fb: "#2e3a1b",
+    extra: () => {
+      let s = `<path d="M0,50 Q400,110 800,50" stroke="#3d5c4a" stroke-width="3" fill="none"/>`;
+      for (let i = 0; i < 14; i++) {
+        const x = 30 + i * 57, y = 50 + Math.sin((x / 800) * Math.PI) * 58;
+        s += `<circle cx="${x}" cy="${y}" r="7" fill="${["#f5a623","#4cd681","#4da3ff","#e05563"][i % 4]}" opacity="0.85"/>`;
+      }
+      return s;
+    } },
+};
 
 /* ================= Encouragement ================= */
 const CHEERS = {
@@ -466,19 +511,21 @@ function fullBand() {
 function renderHall() {
   $("hall-tokens").textContent = `🪙 ${stats.tokens}`;
   const svg = $("hall-svg");
+  const bg = BACKGROUNDS[stats.hallBg && owns(stats.hallBg) ? stats.hallBg : "default"];
   let el = `
     <defs>
       <linearGradient id="wall" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#322a4a"/><stop offset="1" stop-color="#241f36"/>
+        <stop offset="0" stop-color="${bg.wt}"/><stop offset="1" stop-color="${bg.wb}"/>
       </linearGradient>
       <linearGradient id="floor" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#5a4128"/><stop offset="1" stop-color="#3d2c1b"/>
+        <stop offset="0" stop-color="${bg.ft}"/><stop offset="1" stop-color="${bg.fb}"/>
       </linearGradient>
     </defs>
     <rect width="800" height="320" fill="url(#wall)"/>
+    ${bg.extra ? bg.extra() : ""}
     <rect y="320" width="800" height="130" fill="url(#floor)"/>
     <ellipse cx="400" cy="320" rx="330" ry="26" fill="#000" opacity="0.18"/>
-    <path d="M60,300 Q400,180 740,300" stroke="#4a3f6b" stroke-width="3" fill="none" opacity="0.6"/>`;
+    <path d="M60,300 Q400,180 740,300" stroke="#4a3f6b" stroke-width="3" fill="none" opacity="0.5"/>`;
   if (owns("curtains")) {
     el += `
       <path d="M0,0 L120,0 Q75,150 105,320 L0,320 Z" fill="#8c2333"/>
@@ -487,7 +534,7 @@ function renderHall() {
   }
   let delay = 0;
   ITEMS.forEach(it => {
-    if (!owns(it.id) || it.special) return;
+    if (!owns(it.id) || it.special || it.cat === "background") return;
     if (it.cat === "musician") {
       if (!owns(it.needs)) return;
       const host = item(it.needs);
@@ -517,16 +564,18 @@ function renderHall() {
 
 function renderShop() {
   let html = "";
-  ["instrument", "musician", "decor"].forEach(cat => {
+  ["instrument", "musician", "background", "decor"].forEach(cat => {
     html += `<div class="shop-cat">${CAT_LABELS[cat]}</div><div class="shop-grid">`;
     ITEMS.filter(i => i.cat === cat).forEach(it => {
       const owned = owns(it.id);
+      const active = it.cat === "background" && owned && stats.hallBg === it.id;
       const afford = stats.tokens >= it.p;
       const cls = owned ? "owned" : afford ? "" : "cant";
-      const note = it.needs ? (owns(it.needs) ? "plays the " + item(it.needs).n : "needs " + item(it.needs).n) : "";
+      const note = it.needs ? (owns(it.needs) ? "plays the " + item(it.needs).n : "needs " + item(it.needs).n)
+        : it.cat === "background" ? (active ? "shown in your hall" : owned ? "tap to use" : "changes the stage scenery") : "";
       html += `<div class="shop-card ${cls}" data-id="${it.id}">
         <div class="emoji">${it.e}</div><div class="name">${it.n}</div>
-        <div class="price">${owned ? "✓ Owned" : "🪙 " + it.p}</div>
+        <div class="price">${active ? "✓ In use" : owned ? "✓ Owned" : "🪙 " + it.p}</div>
         ${note ? `<div class="note">${note}</div>` : ""}</div>`;
     });
     html += `</div>`;
@@ -548,10 +597,19 @@ function toast(msg) {
 
 function buy(id) {
   const it = item(id);
-  if (owns(id)) return;
+  if (owns(id)) {
+    if (it.cat === "background") {
+      stats.hallBg = stats.hallBg === id ? null : id; // tap again to go back to default
+      saveStats();
+      toast(stats.hallBg ? `${it.e} Your stage is now the ${it.n}!` : "Back to the classic hall.");
+      renderHall(); renderShop();
+    }
+    return;
+  }
   if (stats.tokens < it.p) { toast(`Not enough tokens — ${it.p - stats.tokens} more for the ${it.n}!`); return; }
   stats.tokens -= it.p;
   stats.owned.push(id);
+  if (it.cat === "background") stats.hallBg = id; // new backgrounds show right away
   saveStats();
   const paired = it.needs && owns(it.needs);
   toast(`${it.e} ${it.n} purchased!${paired ? " They take the stage! 🎶" : it.needs ? ` (waiting for a ${item(it.needs).n})` : ""}`);
