@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fretboard Hero — Guitar Note Trainer</title>
+<style>
+  :root {
+    --bg: #14161f;
+    --panel: #1e2230;
+    --panel2: #262b3d;
+    --accent: #f5a623;
+    --accent2: #4cd681;
+    --danger: #e05563;
+    --text: #e8eaf2;
+    --muted: #8b91a8;
+    --wood: #6b4a2b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text);
+    min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+    padding: 20px;
+  }
+  h1 { font-size: 1.6rem; margin-bottom: 4px; }
+  h1 span { color: var(--accent); }
+  .sub { color: var(--muted); font-size: .85rem; margin-bottom: 18px; }
+  .screen { width: 100%; max-width: 720px; }
+  .hidden { display: none !important; }
+
+  /* Level select */
+  .levels { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px,1fr)); gap: 12px; margin-top: 12px; }
+  .level-card {
+    background: var(--panel); border: 1px solid #333a52; border-radius: 12px;
+    padding: 14px; cursor: pointer; transition: transform .1s, border-color .1s;
+  }
+  .level-card:hover { transform: translateY(-2px); border-color: var(--accent); }
+  .level-card.locked { opacity: .45; cursor: not-allowed; }
+  .level-card h3 { font-size: 1rem; margin-bottom: 4px; }
+  .level-card p { font-size: .78rem; color: var(--muted); }
+  .stars { color: var(--accent); font-size: .9rem; margin-top: 6px; letter-spacing: 2px; }
+  .toolbar { display: flex; gap: 10px; align-items: center; margin-top: 18px; flex-wrap: wrap; }
+  label.toggle { font-size: .85rem; color: var(--muted); display: flex; gap: 6px; align-items: center; cursor: pointer; }
+
+  /* Game */
+  .hud { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  .hud .stat { text-align: center; }
+  .hud .stat .val { font-size: 1.4rem; font-weight: 700; }
+  .hud .stat .lbl { font-size: .7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  .streak-fire { color: var(--accent); }
+
+  .prompt {
+    background: var(--panel); border-radius: 14px; padding: 22px; text-align: center;
+    margin-bottom: 14px; border: 2px solid transparent; transition: border-color .15s, background .15s;
+  }
+  .prompt.hit { border-color: var(--accent2); background: #1d3328; }
+  .prompt.miss { border-color: var(--danger); background: #332028; }
+  .prompt .big { font-size: 3rem; font-weight: 800; color: var(--accent); }
+  .prompt .where { font-size: 1.05rem; color: var(--text); margin-top: 4px; }
+  .prompt .feedback { min-height: 22px; font-size: .9rem; margin-top: 8px; color: var(--muted); }
+
+  .timerbar { height: 8px; background: var(--panel2); border-radius: 4px; overflow: hidden; margin-bottom: 16px; }
+  .timerbar > div { height: 100%; background: var(--accent); width: 100%; transition: width .1s linear; }
+
+  /* Fretboard */
+  .board-wrap { background: var(--panel); border-radius: 14px; padding: 18px; margin-bottom: 14px; }
+  svg.board { width: 100%; height: auto; display: block; }
+
+  /* Tuner */
+  .tuner {
+    display: flex; align-items: center; gap: 14px; background: var(--panel);
+    border-radius: 12px; padding: 10px 16px; margin-bottom: 14px;
+  }
+  .tuner .note { font-size: 1.5rem; font-weight: 700; width: 64px; text-align: center; }
+  .tuner .meter { flex: 1; height: 10px; background: var(--panel2); border-radius: 5px; position: relative; }
+  .tuner .meter .mid { position: absolute; left: 50%; top: -3px; width: 2px; height: 16px; background: var(--muted); }
+  .tuner .needle {
+    position: absolute; top: -2px; width: 6px; height: 14px; border-radius: 3px;
+    background: var(--accent2); left: 50%; transform: translateX(-50%); transition: left .08s;
+  }
+  .tuner .lbl { font-size: .7rem; color: var(--muted); }
+
+  button {
+    background: var(--accent); color: #14161f; border: none; border-radius: 10px;
+    padding: 10px 20px; font-size: .95rem; font-weight: 700; cursor: pointer;
+  }
+  button.secondary { background: var(--panel2); color: var(--text); }
+  button:hover { filter: brightness(1.1); }
+  .row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+
+  /* Results */
+  .results { text-align: center; background: var(--panel); border-radius: 14px; padding: 30px; }
+  .results .bigstars { font-size: 3rem; color: var(--accent); letter-spacing: 6px; margin: 10px 0; }
+  .results .score { font-size: 2.2rem; font-weight: 800; }
+  .results p { color: var(--muted); margin: 8px 0 18px; }
+
+  .mic-banner {
+    background: #33202a; border: 1px solid var(--danger); color: #f0b7bd;
+    border-radius: 10px; padding: 12px 16px; font-size: .85rem; margin-bottom: 14px;
+  }
+</style>
+</head>
+<body>
+
+<h1>🎸 Fretboard <span>Hero</span></h1>
+<div class="sub">Learn where every note lives — your guitar is the controller</div>
+
+<!-- ============ LEVEL SELECT ============ -->
+<div id="screen-menu" class="screen">
+  <div id="mic-banner" class="mic-banner hidden">
+    Microphone access is needed to hear your guitar. Click a level and allow the mic when prompted.
+  </div>
+  <div class="levels" id="levels"></div>
+  <div class="toolbar">
+    <label class="toggle"><input type="checkbox" id="opt-hints" checked> Show fret hints (turn off once you're confident)</label>
+    <label class="toggle"><input type="checkbox" id="opt-slow"> Relaxed timer (15s per note)</label>
+  </div>
+</div>
+
+<!-- ============ GAME ============ -->
+<div id="screen-game" class="screen hidden">
+  <div class="hud">
+    <div class="stat"><div class="val" id="hud-score">0</div><div class="lbl">Score</div></div>
+    <div class="stat"><div class="val streak-fire" id="hud-streak">0</div><div class="lbl">Streak</div></div>
+    <div class="stat"><div class="val" id="hud-progress">1/10</div><div class="lbl">Note</div></div>
+  </div>
+
+  <div class="timerbar"><div id="timer-fill"></div></div>
+
+  <div class="prompt" id="prompt-box">
+    <div class="big" id="prompt-note">A</div>
+    <div class="where" id="prompt-where">on the 5th string (A)</div>
+    <div class="feedback" id="prompt-feedback">Listening…</div>
+  </div>
+
+  <div class="board-wrap"><svg class="board" id="board" viewBox="0 0 700 190"></svg></div>
+
+  <div class="tuner">
+    <div class="note" id="tuner-note">—</div>
+    <div class="meter"><div class="mid"></div><div class="needle" id="tuner-needle"></div></div>
+    <div class="lbl" id="tuner-cents">listening…</div>
+  </div>
+
+  <div class="row">
+    <button class="secondary" id="btn-skip">Skip note</button>
+    <button class="secondary" id="btn-quit">Quit level</button>
+  </div>
+</div>
+
+<!-- ============ RESULTS ============ -->
+<div id="screen-results" class="screen hidden">
+  <div class="results">
+    <h2 id="res-title">Level complete!</h2>
+    <div class="bigstars" id="res-stars">★★★</div>
+    <div class="score" id="res-score">0</div>
+    <p id="res-detail"></p>
+    <div class="row">
+      <button id="btn-retry">Retry</button>
+      <button class="secondary" id="btn-menu">Level select</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ================= Note math ================= */
+const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+const midiToName = m => NOTE_NAMES[m % 12];
+const midiToFreq = m => 440 * Math.pow(2, (m - 69) / 12);
+// Standard tuning, string 6 (low E) → string 1 (high E)
+const STRINGS = [
+  { num: 6, name: "E (low)",  midi: 40 },
+  { num: 5, name: "A",        midi: 45 },
+  { num: 4, name: "D",        midi: 50 },
+  { num: 3, name: "G",        midi: 55 },
+  { num: 2, name: "B",        midi: 59 },
+  { num: 1, name: "E (high)", midi: 64 },
+];
+const strByNum = n => STRINGS.find(s => s.num === n);
+
+/* ================= Levels ================= */
+const LEVELS = [
+  { id: "open",  title: "1 · Open Strings",   desc: "E A D G B E — know your strings", pool: STRINGS.map(s => ({ str: s.num, fret: 0 })) },
+  { id: "eStr",  title: "2 · Low E String",   desc: "Frets 0–5 on the 6th string",     pool: fr(6) },
+  { id: "aStr",  title: "3 · A String",       desc: "Frets 0–5 on the 5th string",     pool: fr(5) },
+  { id: "dStr",  title: "4 · D String",       desc: "Frets 0–5 on the 4th string",     pool: fr(4) },
+  { id: "gStr",  title: "5 · G String",       desc: "Frets 0–5 on the 3rd string",     pool: fr(3) },
+  { id: "bStr",  title: "6 · B String",       desc: "Frets 0–5 on the 2nd string",     pool: fr(2) },
+  { id: "heStr", title: "7 · High E String",  desc: "Frets 0–5 on the 1st string",     pool: fr(1) },
+  { id: "mix",   title: "8 · Full Board Mix", desc: "Any string, frets 0–5",           pool: STRINGS.flatMap(s => fr(s.num)) },
+];
+function fr(strNum) { return [0,1,2,3,4,5].map(f => ({ str: strNum, fret: f })); }
+
+const ROUND_LEN = 10;
+
+/* ================= Progress (stars per level) ================= */
+let progress = {};
+try { progress = JSON.parse(localStorage.getItem("fh-progress") || "{}"); } catch (e) { progress = {}; }
+function saveProgress() { try { localStorage.setItem("fh-progress", JSON.stringify(progress)); } catch (e) {} }
+
+/* ================= UI refs ================= */
+const $ = id => document.getElementById(id);
+const screens = { menu: $("screen-menu"), game: $("screen-game"), results: $("screen-results") };
+function show(name) { for (const k in screens) screens[k].classList.toggle("hidden", k !== name); }
+
+/* ================= Level select ================= */
+function renderMenu() {
+  const wrap = $("levels");
+  wrap.innerHTML = "";
+  LEVELS.forEach((lv, i) => {
+    const unlocked = i === 0 || (progress[LEVELS[i-1].id] || 0) >= 1;
+    const stars = progress[lv.id] || 0;
+    const card = document.createElement("div");
+    card.className = "level-card" + (unlocked ? "" : " locked");
+    card.innerHTML = `<h3>${lv.title}</h3><p>${lv.desc}</p>
+      <div class="stars">${"★".repeat(stars)}${"☆".repeat(3 - stars)}${unlocked ? "" : " 🔒"}</div>`;
+    if (unlocked) card.onclick = () => startLevel(lv);
+    wrap.appendChild(card);
+  });
+}
+
+/* ================= Fretboard drawing ================= */
+const NUT_X = 40, BOARD_W = 640, BOARD_TOP = 20, BOARD_H = 150, N_FRETS = 5;
+function fretX(f) { return NUT_X + (f - 0.5) * (BOARD_W / N_FRETS); } // center of fret slot
+function stringY(strNum) { return BOARD_TOP + (6 - strNum) * (BOARD_H / 5); } // string 6 top
+
+function drawBoard(target, showHint) {
+  const svg = $("board");
+  let el = `<rect x="${NUT_X}" y="${BOARD_TOP - 8}" width="${BOARD_W}" height="${BOARD_H + 16}" rx="6" fill="var(--wood)" opacity="0.35"/>`;
+  el += `<rect x="${NUT_X - 6}" y="${BOARD_TOP - 8}" width="6" height="${BOARD_H + 16}" fill="#d8d3c8"/>`; // nut
+  for (let f = 1; f <= N_FRETS; f++) {
+    const x = NUT_X + f * (BOARD_W / N_FRETS);
+    el += `<line x1="${x}" y1="${BOARD_TOP - 8}" x2="${x}" y2="${BOARD_TOP + BOARD_H + 8}" stroke="#9aa0b5" stroke-width="3"/>`;
+    el += `<text x="${fretX(f)}" y="${BOARD_TOP + BOARD_H + 26}" text-anchor="middle" fill="var(--muted)" font-size="12">${f}</text>`;
+  }
+  el += `<circle cx="${fretX(3)}" cy="${BOARD_TOP + BOARD_H / 2}" r="6" fill="#cfd3e0" opacity="0.4"/>`;
+  el += `<circle cx="${fretX(5)}" cy="${BOARD_TOP + BOARD_H / 2}" r="6" fill="#cfd3e0" opacity="0.4"/>`;
+  STRINGS.forEach(s => {
+    const y = stringY(s.num);
+    const isTarget = target && target.str === s.num;
+    el += `<line x1="${NUT_X - 6}" y1="${y}" x2="${NUT_X + BOARD_W}" y2="${y}"
+      stroke="${isTarget ? "var(--accent)" : "#c9cddb"}" stroke-width="${isTarget ? 3.5 : (7 - s.num) * 0.5 + 1}" opacity="${isTarget ? 1 : 0.65}"/>`;
+    el += `<text x="18" y="${y + 4}" text-anchor="middle" fill="${isTarget ? "var(--accent)" : "var(--muted)"}" font-size="13" font-weight="700">${s.name.split(" ")[0]}</text>`;
+  });
+  if (target && showHint) {
+    const y = stringY(target.str);
+    const x = target.fret === 0 ? NUT_X - 22 : fretX(target.fret);
+    el += `<circle cx="${x}" cy="${y}" r="12" fill="var(--accent2)"/>
+           <text x="${x}" y="${y + 4}" text-anchor="middle" fill="#14161f" font-size="12" font-weight="800">${target.fret === 0 ? "0" : target.fret}</text>`;
+  }
+  svg.innerHTML = el;
+}
+
+/* ================= Pitch detection (autocorrelation) ================= */
+let audioCtx = null, analyser = null, micReady = false;
+const BUF_LEN = 4096;
+const buf = new Float32Array(BUF_LEN);
+
+async function initMic() {
+  if (micReady) return true;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+    });
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const src = audioCtx.createMediaStreamSource(stream);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = BUF_LEN;
+    src.connect(analyser);
+    micReady = true;
+    $("mic-banner").classList.add("hidden");
+    return true;
+  } catch (e) {
+    $("mic-banner").classList.remove("hidden");
+    $("mic-banner").textContent = "Couldn't access the microphone (" + e.name + "). Check browser permissions, then try again.";
+    return false;
+  }
+}
+
+// ACF2+ autocorrelation — returns frequency in Hz, or -1
+function detectPitch(buffer, sampleRate) {
+  let rms = 0;
+  for (let i = 0; i < buffer.length; i++) rms += buffer[i] * buffer[i];
+  rms = Math.sqrt(rms / buffer.length);
+  if (rms < 0.012) return -1; // too quiet
+
+  // trim silence at edges
+  let start = 0, end = buffer.length - 1;
+  const thres = 0.2;
+  for (let i = 0; i < buffer.length / 2; i++) if (Math.abs(buffer[i]) > thres) { start = i; break; }
+  for (let i = 1; i < buffer.length / 2; i++) if (Math.abs(buffer[buffer.length - i]) > thres) { end = buffer.length - i; break; }
+  const b = buffer.slice(start, end);
+  const N = b.length;
+  if (N < 512) return -1;
+
+  const c = new Float32Array(N);
+  for (let lag = 0; lag < N; lag++) {
+    let sum = 0;
+    for (let i = 0; i < N - lag; i++) sum += b[i] * b[i + lag];
+    c[lag] = sum;
+  }
+  let d = 0;
+  while (d < N - 1 && c[d] > c[d + 1]) d++;
+  let maxval = -1, maxpos = -1;
+  for (let i = d; i < N; i++) if (c[i] > maxval) { maxval = c[i]; maxpos = i; }
+  if (maxpos <= 0) return -1;
+  let T0 = maxpos;
+  // parabolic interpolation
+  const x1 = c[T0 - 1], x2 = c[T0], x3 = c[T0 + 1] || 0;
+  const a = (x1 + x3 - 2 * x2) / 2, bb = (x3 - x1) / 2;
+  if (a) T0 = T0 - bb / (2 * a);
+  const freq = sampleRate / T0;
+  if (freq < 60 || freq > 1500) return -1;
+  return freq;
+}
+
+function freqToMidiCents(freq) {
+  const midiFloat = 69 + 12 * Math.log2(freq / 440);
+  const midi = Math.round(midiFloat);
+  return { midi, cents: Math.round((midiFloat - midi) * 100) };
+}
+
+/* ================= Game state ================= */
+let game = null, rafId = null, timerId = null;
+
+function startLevel(level) {
+  initMic().then(ok => {
+    if (!ok) { show("menu"); return; }
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    const pool = level.pool.slice();
+    const seq = [];
+    let last = null;
+    for (let i = 0; i < ROUND_LEN; i++) {
+      let pick;
+      do { pick = pool[Math.floor(Math.random() * pool.length)]; }
+      while (pool.length > 1 && last && pick.str === last.str && pick.fret === last.fret);
+      seq.push(pick); last = pick;
+    }
+    game = {
+      level, seq, idx: 0, score: 0, streak: 0, bestStreak: 0, hits: 0,
+      hints: $("opt-hints").checked,
+      noteTime: $("opt-slow").checked ? 15000 : 10000,
+      state: "waiting", // waiting | resolved
+      matchFrames: 0, deadline: 0,
+    };
+    show("game");
+    nextNote();
+    loop();
+  });
+}
+
+function currentTarget() {
+  const t = game.seq[game.idx];
+  return { ...t, midi: strByNum(t.str).midi + t.fret };
+}
+
+function ordinal(n) { return n + (["","st","nd","rd"][n] || "th"); }
+
+function nextNote() {
+  const t = currentTarget();
+  game.state = "waiting";
+  game.matchFrames = 0;
+  game.deadline = performance.now() + game.noteTime;
+  $("prompt-box").className = "prompt";
+  $("prompt-note").textContent = midiToName(t.midi);
+  $("prompt-where").textContent = `on the ${ordinal(t.str)} string (${strByNum(t.str).name})`;
+  $("prompt-feedback").textContent = "Listening…";
+  $("hud-progress").textContent = `${game.idx + 1}/${ROUND_LEN}`;
+  drawBoard(t, game.hints);
+}
+
+function resolve(hit) {
+  if (game.state !== "waiting") return;
+  game.state = "resolved";
+  const t = currentTarget();
+  const box = $("prompt-box");
+  if (hit) {
+    const timeLeft = Math.max(0, game.deadline - performance.now());
+    const speedBonus = Math.round(100 * timeLeft / game.noteTime);
+    game.streak++; game.hits++;
+    game.bestStreak = Math.max(game.bestStreak, game.streak);
+    const mult = 1 + Math.min(game.streak - 1, 4) * 0.25; // up to 2x at 5-streak
+    const pts = Math.round((100 + speedBonus) * mult);
+    game.score += pts;
+    box.classList.add("hit");
+    $("prompt-feedback").textContent = `✓ +${pts} pts${game.streak >= 3 ? ` · ${game.streak} streak! 🔥` : ""}`;
+  } else {
+    game.streak = 0;
+    box.classList.add("miss");
+    $("prompt-feedback").textContent = `✗ It was ${midiToName(t.midi)} — fret ${t.fret} on the ${ordinal(t.str)} string`;
+    drawBoard(t, true); // reveal answer
+  }
+  $("hud-score").textContent = game.score;
+  $("hud-streak").textContent = game.streak;
+  setTimeout(() => {
+    game.idx++;
+    if (game.idx >= ROUND_LEN) endLevel();
+    else nextNote();
+  }, hit ? 900 : 1800);
+}
+
+function endLevel() {
+  cancelAnimationFrame(rafId);
+  const acc = game.hits / ROUND_LEN;
+  const stars = acc >= 0.9 ? 3 : acc >= 0.7 ? 2 : acc >= 0.5 ? 1 : 0;
+  const prev = progress[game.level.id] || 0;
+  if (stars > prev) { progress[game.level.id] = stars; saveProgress(); }
+  $("res-title").textContent = stars > 0 ? "Level complete!" : "Keep practicing!";
+  $("res-stars").textContent = "★".repeat(stars) + "☆".repeat(3 - stars);
+  $("res-score").textContent = game.score + " pts";
+  $("res-detail").textContent = `${game.hits}/${ROUND_LEN} notes · best streak ${game.bestStreak}` +
+    (stars === 0 ? " · get 50%+ to earn a star and unlock the next level" : "");
+  show("results");
+}
+
+/* ================= Main loop ================= */
+const NEEDED_FRAMES = 5; // consecutive matching frames to count a hit
+
+function loop() {
+  rafId = requestAnimationFrame(loop);
+  if (!game || !micReady) return;
+
+  // timer
+  if (game.state === "waiting") {
+    const left = game.deadline - performance.now();
+    $("timer-fill").style.width = Math.max(0, 100 * left / game.noteTime) + "%";
+    if (left <= 0) { resolve(false); return; }
+  }
+
+  analyser.getFloatTimeDomainData(buf);
+  const freq = detectPitch(buf, audioCtx.sampleRate);
+
+  if (freq === -1) {
+    $("tuner-note").textContent = "—";
+    $("tuner-cents").textContent = "listening…";
+    $("tuner-needle").style.left = "50%";
+    game.matchFrames = 0;
+    return;
+  }
+
+  const { midi, cents } = freqToMidiCents(freq);
+  $("tuner-note").textContent = midiToName(midi);
+  $("tuner-cents").textContent = (cents >= 0 ? "+" : "") + cents + " cents";
+  $("tuner-needle").style.left = (50 + cents) + "%";
+  const inTune = Math.abs(cents) < 20;
+  $("tuner-needle").style.background = inTune ? "var(--accent2)" : "var(--accent)";
+
+  if (game.state !== "waiting") return;
+  const t = currentTarget();
+  // match: same pitch class within one octave (forgives octave-detection glitches)
+  const match = (midi % 12) === (t.midi % 12) && Math.abs(midi - t.midi) <= 12;
+  if (match) {
+    game.matchFrames++;
+    if (game.matchFrames >= NEEDED_FRAMES) resolve(true);
+  } else {
+    game.matchFrames = 0;
+    $("prompt-feedback").textContent = `Heard ${midiToName(midi)} — try again`;
+  }
+}
+
+/* ================= Buttons ================= */
+$("btn-skip").onclick = () => resolve(false);
+$("btn-quit").onclick = () => { cancelAnimationFrame(rafId); show("menu"); renderMenu(); };
+$("btn-retry").onclick = () => startLevel(game.level);
+$("btn-menu").onclick = () => { show("menu"); renderMenu(); };
+
+renderMenu();
+</script>
+</body>
+</html>
