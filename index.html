@@ -152,7 +152,12 @@
     <div class="bars" id="acc-bars"></div>
   </div>
   <table class="ptable" id="ptable"></table>
-  <div class="row"><button id="btn-progress-back">Back to levels</button></div>
+  <div class="row">
+    <button id="btn-progress-back">Back to levels</button>
+    <button class="secondary" id="btn-export">⬇ Export progress</button>
+    <button class="secondary" id="btn-import">⬆ Import progress</button>
+    <input type="file" id="import-file" accept=".json,application/json" style="display:none">
+  </div>
 </div>
 
 <!-- ============ GAME ============ -->
@@ -594,6 +599,38 @@ $("btn-retry").onclick = () => startLevel(game.level);
 $("btn-menu").onclick = () => { show("menu"); renderMenu(); greet(); };
 $("btn-progress").onclick = () => { renderProgress(); show("progress"); };
 $("btn-progress-back").onclick = () => { show("menu"); renderMenu(); greet(); };
+
+/* ================= Export / Import ================= */
+$("btn-export").onclick = () => {
+  const data = { app: "fretboard-hero", exported: new Date().toISOString(), progress, stats };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `fretboard-progress-${todayStr()}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+$("btn-import").onclick = () => $("import-file").click();
+$("import-file").onchange = e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      if (data.app !== "fretboard-hero" || !data.stats || !data.progress) throw new Error("bad format");
+      progress = data.progress;
+      stats = Object.assign({ sessions: [], dayStreak: 0, lastDay: null }, data.stats);
+      saveProgress(); saveStats();
+      renderProgress();
+      alert(`Welcome back, ${PLAYER}! Imported ${stats.sessions.length} lessons.`);
+    } catch (err) {
+      alert("That doesn't look like a Fretboard Hero progress file.");
+    }
+    e.target.value = "";
+  };
+  reader.readAsText(file);
+};
 
 renderMenu();
 greet();
