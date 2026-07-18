@@ -75,7 +75,7 @@ so a server is required for Chrome.)
 
 ## Tech
 
-Single-file vanilla HTML/CSS/JS, ~1,600 lines, no dependencies. Four detection methods, all
+Single-file vanilla HTML/CSS/JS, ~1,300 lines, no dependencies. Four detection methods, all
 running on a live mic stream via the Web Audio API:
 
 - **Single notes** — autocorrelation (ACF2+) with parabolic interpolation over a 4096-sample
