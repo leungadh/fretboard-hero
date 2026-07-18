@@ -61,7 +61,7 @@ matching frames (pitch class match, octave-error tolerant). SVG fretboard render
 
 ## Roadmap
 
-- [ ] Chord detection (Em, Am, D, G, C) and chord-change drills
+- [x] Chord practice (Em, Am, D, G, C): string-by-string learn mode + strummed chord-change drills
 - [ ] Scrolling "Guitar Hero"-style song mode
 - [ ] Metronome / strumming rhythm trainer
 - [ ] Higher frets (5–12) and full fretboard levels

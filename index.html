@@ -267,6 +267,22 @@ const STRINGS = [
 ];
 const strByNum = n => STRINGS.find(s => s.num === n);
 
+/* ================= Chords ================= */
+// frets: index 0 = string 6 (low E) … index 5 = string 1; -1 = muted
+const CHORDS = {
+  Em: { name: "E minor", frets: [0, 2, 2, 0, 0, 0] },
+  Am: { name: "A minor", frets: [-1, 0, 2, 2, 1, 0] },
+  D:  { name: "D major", frets: [-1, -1, 0, 2, 3, 2] },
+  G:  { name: "G major", frets: [3, 2, 0, 0, 0, 3] },
+  C:  { name: "C major", frets: [-1, 3, 2, 0, 1, 0] },
+};
+function chordNotes(key) { // playable strings, low → high
+  return CHORDS[key].frets
+    .map((f, i) => f < 0 ? null : { str: STRINGS[i].num, midi: STRINGS[i].midi + f })
+    .filter(Boolean);
+}
+const chordPCs = key => [...new Set(chordNotes(key).map(n => n.midi % 12))];
+
 /* ================= Levels ================= */
 const LEVELS = [
   { id: "open",  title: "1 · Open Strings",   desc: "E A D G B E — know your strings", pool: STRINGS.map(s => ({ str: s.num, fret: 0 })) },
@@ -277,6 +293,11 @@ const LEVELS = [
   { id: "bStr",  title: "6 · B String",       desc: "Frets 0–5 on the 2nd string",     pool: fr(2) },
   { id: "heStr", title: "7 · High E String",  desc: "Frets 0–5 on the 1st string",     pool: fr(1) },
   { id: "mix",   title: "8 · Full Board Mix", desc: "Any string, frets 0–5",           pool: STRINGS.flatMap(s => fr(s.num)) },
+  { id: "chEmAm", title: "9 · Chords: Em & Am",    desc: "Fret the chord, pick string by string", mode: "chordLearn", chords: ["Em", "Am"] },
+  { id: "chDG",   title: "10 · Chords: D & G",     desc: "Two more chords, string by string",     mode: "chordLearn", chords: ["D", "G"] },
+  { id: "chC",    title: "11 · Chords: C + review", desc: "C major, plus all chords mixed",        mode: "chordLearn", chords: ["C", "Em", "Am", "D", "G"] },
+  { id: "chg1",   title: "12 · Chord Changes I",   desc: "Strum the chord on cue — Em, Am, D",    mode: "chordStrum", chords: ["Em", "Am", "D"] },
+  { id: "chg2",   title: "13 · Chord Changes II",  desc: "All five chords — strum on cue",        mode: "chordStrum", chords: ["Em", "Am", "D", "G", "C"] },
 ];
 function fr(strNum) { return [0,1,2,3,4,5].map(f => ({ str: strNum, fret: f })); }
 
@@ -575,6 +596,36 @@ function drawBoard(target, showHint) {
   svg.innerHTML = el;
 }
 
+function drawChordBoard(key, done) {
+  const svg = $("board");
+  const frets = CHORDS[key].frets;
+  let el = `<rect x="${NUT_X}" y="${BOARD_TOP - 8}" width="${BOARD_W}" height="${BOARD_H + 16}" rx="6" fill="var(--wood)" opacity="0.35"/>`;
+  el += `<rect x="${NUT_X - 6}" y="${BOARD_TOP - 8}" width="6" height="${BOARD_H + 16}" fill="#d8d3c8"/>`;
+  for (let f = 1; f <= N_FRETS; f++) {
+    const x = NUT_X + f * (BOARD_W / N_FRETS);
+    el += `<line x1="${x}" y1="${BOARD_TOP - 8}" x2="${x}" y2="${BOARD_TOP + BOARD_H + 8}" stroke="#9aa0b5" stroke-width="3"/>`;
+    el += `<text x="${fretX(f)}" y="${BOARD_TOP + BOARD_H + 26}" text-anchor="middle" fill="var(--muted)" font-size="12">${f}</text>`;
+  }
+  STRINGS.forEach((s, i) => {
+    const y = stringY(s.num);
+    const f = frets[i];
+    const muted = f < 0;
+    const isDone = done.includes(s.num);
+    const col = isDone ? "var(--accent2)" : muted ? "#555b70" : "#c9cddb";
+    el += `<line x1="${NUT_X - 6}" y1="${y}" x2="${NUT_X + BOARD_W}" y2="${y}" stroke="${col}" stroke-width="${isDone ? 3.5 : (7 - s.num) * 0.5 + 1}" opacity="${muted ? 0.35 : isDone ? 1 : 0.7}"/>`;
+    el += `<text x="8" y="${y + 4}" fill="${isDone ? "var(--accent2)" : "var(--muted)"}" font-size="12" font-weight="700">${s.name.split(" ")[0]}</text>`;
+    if (muted) {
+      el += `<text x="26" y="${y + 5}" text-anchor="middle" fill="var(--danger)" font-size="14" font-weight="800">✕</text>`;
+    } else if (f === 0) {
+      el += `<circle cx="26" cy="${y}" r="7" fill="none" stroke="${isDone ? "var(--accent2)" : "var(--muted)"}" stroke-width="2"/>`;
+    } else {
+      el += `<circle cx="${fretX(f)}" cy="${y}" r="12" fill="${isDone ? "var(--accent2)" : "var(--accent)"}"/>
+             <text x="${fretX(f)}" y="${y + 4}" text-anchor="middle" fill="#14161f" font-size="12" font-weight="800">${f}</text>`;
+    }
+  });
+  svg.innerHTML = el;
+}
+
 /* ================= Pitch detection (autocorrelation) ================= */
 let audioCtx = null, analyser = null, micReady = false;
 const BUF_LEN = 4096;
@@ -638,6 +689,26 @@ function detectPitch(buffer, sampleRate) {
   return freq;
 }
 
+// Chromagram: energy per pitch class from the FFT — for strummed chords
+const freqData = new Float32Array(BUF_LEN / 2);
+function chromaSnapshot() {
+  analyser.getFloatFrequencyData(freqData);
+  const res = audioCtx.sampleRate / BUF_LEN;
+  const chroma = new Array(12).fill(0);
+  let total = 0;
+  for (let k = Math.ceil(75 / res); k <= Math.floor(1050 / res); k++) {
+    const db = freqData[k];
+    if (db < -75) continue;
+    const p = Math.pow(10, db / 10);
+    const midi = Math.round(69 + 12 * Math.log2((k * res) / 440));
+    chroma[((midi % 12) + 12) % 12] += p;
+    total += p;
+  }
+  if (total < 1e-8) return null;
+  const ranked = chroma.map((v, i) => [v, i]).sort((a, b) => b[0] - a[0]);
+  return { top3: ranked.slice(0, 3).map(x => x[1]), topPC: ranked[0][1] };
+}
+
 function freqToMidiCents(freq) {
   const midiFloat = 69 + 12 * Math.log2(freq / 440);
   const midi = Math.round(midiFloat);
@@ -651,21 +722,26 @@ function startLevel(level) {
   initMic().then(ok => {
     if (!ok) { show("menu"); return; }
     if (audioCtx.state === "suspended") audioCtx.resume();
-    const pool = level.pool.slice();
+    const mode = level.mode || "note";
+    const rounds = mode === "chordLearn" ? 5 : 10;
+    const pool = mode === "note" ? level.pool.slice() : level.chords.slice();
     const seq = [];
     let last = null;
-    for (let i = 0; i < ROUND_LEN; i++) {
+    for (let i = 0; i < rounds; i++) {
       let pick;
       do { pick = pool[Math.floor(Math.random() * pool.length)]; }
-      while (pool.length > 1 && last && pick.str === last.str && pick.fret === last.fret);
+      while (pool.length > 1 && last !== null && JSON.stringify(pick) === JSON.stringify(last));
       seq.push(pick); last = pick;
     }
+    const slow = $("opt-slow").checked;
+    const times = { note: slow ? 15000 : 10000, chordLearn: slow ? 35000 : 25000, chordStrum: slow ? 12000 : 8000 };
     game = {
-      level, seq, idx: 0, score: 0, streak: 0, bestStreak: 0, hits: 0,
+      level, mode, rounds, seq, idx: 0, score: 0, streak: 0, bestStreak: 0, hits: 0,
       hints: $("opt-hints").checked,
-      noteTime: $("opt-slow").checked ? 15000 : 10000,
+      noteTime: times[mode],
       state: "waiting", // waiting | resolved
       matchFrames: 0, deadline: 0,
+      stringIdx: 0, doneStrings: [], notes: [],
     };
     show("game");
     nextNote();
@@ -681,22 +757,34 @@ function currentTarget() {
 function ordinal(n) { return n + (["","st","nd","rd"][n] || "th"); }
 
 function nextNote() {
-  const t = currentTarget();
   game.state = "waiting";
   game.matchFrames = 0;
   game.deadline = performance.now() + game.noteTime;
   $("prompt-box").className = "prompt";
-  $("prompt-note").textContent = midiToName(t.midi);
-  $("prompt-where").textContent = `on the ${ordinal(t.str)} string (${strByNum(t.str).name})`;
-  $("prompt-feedback").textContent = "Listening…";
-  $("hud-progress").textContent = `${game.idx + 1}/${ROUND_LEN}`;
-  drawBoard(t, game.hints);
+  $("hud-progress").textContent = `${game.idx + 1}/${game.rounds}`;
+  if (game.mode === "note") {
+    const t = currentTarget();
+    $("prompt-note").textContent = midiToName(t.midi);
+    $("prompt-where").textContent = `on the ${ordinal(t.str)} string (${strByNum(t.str).name})`;
+    $("prompt-feedback").textContent = "Listening…";
+    drawBoard(t, game.hints);
+  } else {
+    const key = game.seq[game.idx];
+    game.notes = chordNotes(key);
+    game.stringIdx = 0;
+    game.doneStrings = [];
+    $("prompt-note").textContent = key;
+    $("prompt-where").textContent = CHORDS[key].name +
+      (game.mode === "chordLearn" ? " — fret it, then pick each string low to high" : " — strum it!");
+    $("prompt-feedback").textContent = game.mode === "chordLearn"
+      ? `Pick the ${ordinal(game.notes[0].str)} string…` : "Listening for your strum…";
+    drawChordBoard(key, []);
+  }
 }
 
 function resolve(hit) {
   if (game.state !== "waiting") return;
   game.state = "resolved";
-  const t = currentTarget();
   const box = $("prompt-box");
   if (hit) {
     const timeLeft = Math.max(0, game.deadline - performance.now());
@@ -711,27 +799,33 @@ function resolve(hit) {
   } else {
     game.streak = 0;
     box.classList.add("miss");
-    $("prompt-feedback").textContent = `✗ It was ${midiToName(t.midi)} — fret ${t.fret} on the ${ordinal(t.str)} string`;
-    drawBoard(t, true); // reveal answer
+    if (game.mode === "note") {
+      const t = currentTarget();
+      $("prompt-feedback").textContent = `✗ It was ${midiToName(t.midi)} — fret ${t.fret} on the ${ordinal(t.str)} string`;
+      drawBoard(t, true); // reveal answer
+    } else {
+      const key = game.seq[game.idx];
+      $("prompt-feedback").textContent = `✗ That was ${key} (${CHORDS[key].name}) — check the diagram and try the next one`;
+    }
   }
   $("hud-score").textContent = game.score;
   $("hud-streak").textContent = game.streak;
   setTimeout(() => {
     game.idx++;
-    if (game.idx >= ROUND_LEN) endLevel();
+    if (game.idx >= game.rounds) endLevel();
     else nextNote();
   }, hit ? 900 : 1800);
 }
 
 function endLevel() {
   cancelAnimationFrame(rafId);
-  const acc = game.hits / ROUND_LEN;
+  const acc = game.hits / game.rounds;
   const stars = acc >= 0.9 ? 3 : acc >= 0.7 ? 2 : acc >= 0.5 ? 1 : 0;
   const prev = progress[game.level.id] || 0;
   if (stars > prev) { progress[game.level.id] = stars; saveProgress(); }
   const prevBest = Math.max(0, ...stats.sessions.filter(s => s.lv === game.level.id).map(s => s.score));
   const firstToday = stats.lastDay !== todayStr();
-  recordSession(game.level.id, game.score, game.hits, ROUND_LEN, stars);
+  recordSession(game.level.id, game.score, game.hits, game.rounds, stars);
   // tokens
   let earn = [5, 10, 15, 25][stars];
   const bonuses = [];
@@ -749,7 +843,7 @@ function endLevel() {
   $("res-title").textContent = stars > 0 ? "Level complete!" : "Keep practicing!";
   $("res-stars").textContent = "★".repeat(stars) + "☆".repeat(3 - stars);
   $("res-score").textContent = game.score + " pts";
-  $("res-detail").textContent = `${game.hits}/${ROUND_LEN} notes · best streak ${game.bestStreak}` +
+  $("res-detail").textContent = `${game.hits}/${game.rounds} ${game.mode === "note" ? "notes" : "chords"} · best streak ${game.bestStreak}` +
     (stars === 0 ? " · get 50%+ to earn a star and unlock the next level" : "");
   show("results");
 }
@@ -769,6 +863,28 @@ function loop() {
   }
 
   analyser.getFloatTimeDomainData(buf);
+
+  // ---- strum mode: chromagram over the whole spectrum ----
+  if (game.mode === "chordStrum") {
+    if (game.state !== "waiting") return;
+    let rms = 0;
+    for (let i = 0; i < buf.length; i++) rms += buf[i] * buf[i];
+    rms = Math.sqrt(rms / buf.length);
+    if (rms < 0.02) { game.matchFrames = 0; return; }
+    const snap = chromaSnapshot();
+    if (!snap) { game.matchFrames = 0; return; }
+    const pcs = chordPCs(game.seq[game.idx]);
+    if (snap.top3.every(pc => pcs.includes(pc))) {
+      game.matchFrames++;
+      if (game.matchFrames >= 3) resolve(true);
+    } else {
+      game.matchFrames = 0;
+      $("prompt-feedback").textContent = `Hearing a lot of ${NOTE_NAMES[snap.topPC]} — check your fingers and strum again`;
+    }
+    return;
+  }
+
+  // ---- single-note pitch detection (note + chordLearn modes) ----
   const freq = detectPitch(buf, audioCtx.sampleRate);
 
   if (freq === -1) {
@@ -787,6 +903,26 @@ function loop() {
   $("tuner-needle").style.background = inTune ? "var(--accent2)" : "var(--accent)";
 
   if (game.state !== "waiting") return;
+
+  if (game.mode === "chordLearn") {
+    const exp = game.notes[game.stringIdx];
+    const match = (midi % 12) === (exp.midi % 12) && Math.abs(midi - exp.midi) <= 12;
+    if (match) {
+      game.matchFrames++;
+      if (game.matchFrames >= NEEDED_FRAMES) {
+        game.matchFrames = 0;
+        game.doneStrings.push(exp.str);
+        drawChordBoard(game.seq[game.idx], game.doneStrings);
+        game.stringIdx++;
+        if (game.stringIdx >= game.notes.length) { resolve(true); }
+        else $("prompt-feedback").textContent = `✓ String ${exp.str}! Now pick the ${ordinal(game.notes[game.stringIdx].str)} string…`;
+      }
+    } else {
+      game.matchFrames = 0;
+    }
+    return;
+  }
+
   const t = currentTarget();
   // match: same pitch class within one octave (forgives octave-detection glitches)
   const match = (midi % 12) === (t.midi % 12) && Math.abs(midi - t.midi) <= 12;
