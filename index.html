@@ -29,6 +29,28 @@
   .screen { width: 100%; max-width: 720px; }
   .hidden { display: none !important; }
 
+  /* Greeting */
+  .greeting { font-size: 1.15rem; margin-bottom: 4px; }
+  .greeting b { color: var(--accent2); }
+  .greet-sub { color: var(--muted); font-size: .85rem; margin-bottom: 10px; }
+
+  /* Progress screen */
+  .pstats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap: 12px; margin-bottom: 16px; }
+  .pstat { background: var(--panel); border-radius: 12px; padding: 14px; text-align: center; }
+  .pstat .val { font-size: 1.6rem; font-weight: 800; }
+  .pstat .lbl { font-size: .7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }
+  .ptable { width: 100%; background: var(--panel); border-radius: 12px; padding: 14px; margin-bottom: 16px; border-collapse: collapse; }
+  .ptable th { font-size: .7rem; color: var(--muted); text-transform: uppercase; text-align: left; padding: 6px 8px; }
+  .ptable td { padding: 6px 8px; font-size: .9rem; border-top: 1px solid #2c3247; }
+  .ptable td.stars-cell { color: var(--accent); letter-spacing: 2px; }
+  .chart { background: var(--panel); border-radius: 12px; padding: 14px; margin-bottom: 16px; }
+  .chart h3 { font-size: .8rem; color: var(--muted); text-transform: uppercase; margin-bottom: 10px; }
+  .bars { display: flex; align-items: flex-end; gap: 6px; height: 90px; }
+  .bars .bar { flex: 1; background: var(--accent); border-radius: 4px 4px 0 0; min-height: 4px; position: relative; }
+  .bars .bar.good { background: var(--accent2); }
+  .bars .bar span { position: absolute; top: -18px; left: 50%; transform: translateX(-50%); font-size: .65rem; color: var(--muted); }
+  .pmsg { font-size: 1.05rem; margin: 4px 0 16px; line-height: 1.4; }
+
   /* Level select */
   .levels { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px,1fr)); gap: 12px; margin-top: 12px; }
   .level-card {
@@ -108,6 +130,8 @@
 
 <!-- ============ LEVEL SELECT ============ -->
 <div id="screen-menu" class="screen">
+  <div class="greeting" id="greeting"></div>
+  <div class="greet-sub" id="greet-sub"></div>
   <div id="mic-banner" class="mic-banner hidden">
     Microphone access is needed to hear your guitar. Click a level and allow the mic when prompted.
   </div>
@@ -115,7 +139,20 @@
   <div class="toolbar">
     <label class="toggle"><input type="checkbox" id="opt-hints" checked> Show fret hints (turn off once you're confident)</label>
     <label class="toggle"><input type="checkbox" id="opt-slow"> Relaxed timer (15s per note)</label>
+    <button class="secondary" id="btn-progress">📊 My Progress</button>
   </div>
+</div>
+
+<!-- ============ PROGRESS ============ -->
+<div id="screen-progress" class="screen hidden">
+  <h2 style="margin-bottom:12px">📊 Andy's Progress</h2>
+  <div class="pstats" id="pstats"></div>
+  <div class="chart" id="chart-wrap">
+    <h3>Accuracy — last 12 sessions</h3>
+    <div class="bars" id="acc-bars"></div>
+  </div>
+  <table class="ptable" id="ptable"></table>
+  <div class="row"><button id="btn-progress-back">Back to levels</button></div>
 </div>
 
 <!-- ============ GAME ============ -->
@@ -154,6 +191,7 @@
     <h2 id="res-title">Level complete!</h2>
     <div class="bigstars" id="res-stars">★★★</div>
     <div class="score" id="res-score">0</div>
+    <div class="pmsg" id="res-msg"></div>
     <p id="res-detail"></p>
     <div class="row">
       <button id="btn-retry">Retry</button>
@@ -199,9 +237,93 @@ let progress = {};
 try { progress = JSON.parse(localStorage.getItem("fh-progress") || "{}"); } catch (e) { progress = {}; }
 function saveProgress() { try { localStorage.setItem("fh-progress", JSON.stringify(progress)); } catch (e) {} }
 
+/* ================= Player profile & session history ================= */
+const PLAYER = "Andy";
+let stats = { sessions: [], dayStreak: 0, lastDay: null };
+try { stats = Object.assign(stats, JSON.parse(localStorage.getItem("fh-stats") || "{}")); } catch (e) {}
+function saveStats() { try { localStorage.setItem("fh-stats", JSON.stringify(stats)); } catch (e) {} }
+const todayStr = () => new Date().toISOString().slice(0, 10);
+
+function recordSession(levelId, score, hits, total, stars) {
+  const today = todayStr();
+  if (stats.lastDay !== today) {
+    const yest = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    stats.dayStreak = stats.lastDay === yest ? stats.dayStreak + 1 : 1;
+    stats.lastDay = today;
+  }
+  stats.sessions.push({ d: today, t: Date.now(), lv: levelId, score, hits, total, stars });
+  if (stats.sessions.length > 300) stats.sessions = stats.sessions.slice(-300);
+  saveStats();
+}
+
+/* ================= Encouragement ================= */
+const CHEERS = {
+  3: [
+    "Outstanding, {n}! Three stars — you owned that fretboard! 🌟",
+    "Flawless, {n}! You're playing like a natural. On to the next level! 🎸",
+    "{n}, that was superb. Those notes are yours now — keep riding this wave!",
+  ],
+  2: [
+    "Nice work, {n}! Two stars — one more focused run and you'll make it three. 💪",
+    "Solid playing, {n}! You're close — a touch faster and perfection is yours.",
+    "Great progress, {n}. The fretboard is starting to feel like home, isn't it?",
+  ],
+  1: [
+    "Good effort, {n}! You passed — every rep makes those notes stick. 🎯",
+    "You're getting there, {n}. Run it once more and watch your score jump!",
+    "One star banked, {n}. Momentum matters more than perfection — go again!",
+  ],
+  0: [
+    "Don't give up, {n}! Every guitarist fumbles notes before nailing them. One more try! 💪",
+    "Tough round, {n} — but tough rounds are where the learning happens. Turn hints on and push harder!",
+    "{n}, you've got to work this one harder — slow down, find each note, and it WILL click. 🔥",
+  ],
+};
+function pick(arr) { return arr[Math.floor(Math.random() * arr.length)].replaceAll("{n}", PLAYER); }
+
+function greet() {
+  const h = new Date().getHours();
+  const tod = h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+  $("greeting").innerHTML = `${tod}, <b>${PLAYER}</b> 👋`;
+  const n = stats.sessions.length;
+  const hitsTotal = stats.sessions.reduce((a, s) => a + s.hits, 0);
+  $("greet-sub").textContent = n === 0
+    ? "Ready for your first lesson? Grab your guitar!"
+    : `🔥 ${stats.dayStreak}-day streak · ${n} lessons · ${hitsTotal} notes nailed. ${stats.lastDay === todayStr() ? "Great to see you back today!" : "Let's keep the streak alive!"}`;
+}
+
+/* ================= Progress screen ================= */
+function renderProgress() {
+  const ss = stats.sessions;
+  const hitsTotal = ss.reduce((a, s) => a + s.hits, 0);
+  const seen = ss.reduce((a, s) => a + s.total, 0);
+  const acc = seen ? Math.round(100 * hitsTotal / seen) : 0;
+  $("pstats").innerHTML = `
+    <div class="pstat"><div class="val">🔥 ${stats.dayStreak}</div><div class="lbl">Day streak</div></div>
+    <div class="pstat"><div class="val">${ss.length}</div><div class="lbl">Lessons</div></div>
+    <div class="pstat"><div class="val">${hitsTotal}</div><div class="lbl">Notes hit</div></div>
+    <div class="pstat"><div class="val">${acc}%</div><div class="lbl">Accuracy</div></div>`;
+
+  const last = ss.slice(-12);
+  $("chart-wrap").style.display = last.length ? "" : "none";
+  $("acc-bars").innerHTML = last.map(s => {
+    const a = Math.round(100 * s.hits / s.total);
+    return `<div class="bar${a >= 70 ? " good" : ""}" style="height:${Math.max(4, a * 0.9)}px" title="${s.d} · ${a}%"><span>${a}</span></div>`;
+  }).join("");
+
+  let rows = `<tr><th>Level</th><th>Stars</th><th>Best score</th><th>Plays</th></tr>`;
+  LEVELS.forEach(lv => {
+    const plays = ss.filter(s => s.lv === lv.id);
+    const best = plays.length ? Math.max(...plays.map(s => s.score)) : "—";
+    const st = progress[lv.id] || 0;
+    rows += `<tr><td>${lv.title}</td><td class="stars-cell">${"★".repeat(st)}${"☆".repeat(3 - st)}</td><td>${best}</td><td>${plays.length}</td></tr>`;
+  });
+  $("ptable").innerHTML = rows;
+}
+
 /* ================= UI refs ================= */
 const $ = id => document.getElementById(id);
-const screens = { menu: $("screen-menu"), game: $("screen-game"), results: $("screen-results") };
+const screens = { menu: $("screen-menu"), game: $("screen-game"), results: $("screen-results"), progress: $("screen-progress") };
 function show(name) { for (const k in screens) screens[k].classList.toggle("hidden", k !== name); }
 
 /* ================= Level select ================= */
@@ -406,6 +528,12 @@ function endLevel() {
   const stars = acc >= 0.9 ? 3 : acc >= 0.7 ? 2 : acc >= 0.5 ? 1 : 0;
   const prev = progress[game.level.id] || 0;
   if (stars > prev) { progress[game.level.id] = stars; saveProgress(); }
+  const prevBest = Math.max(0, ...stats.sessions.filter(s => s.lv === game.level.id).map(s => s.score));
+  recordSession(game.level.id, game.score, game.hits, ROUND_LEN, stars);
+  let msg = pick(CHEERS[stars]);
+  if (game.score > prevBest && prevBest > 0) msg = "🏆 New personal best! " + msg;
+  if (stats.dayStreak >= 3) msg += ` (${stats.dayStreak} days in a row — that's how skills are built!)`;
+  $("res-msg").textContent = msg;
   $("res-title").textContent = stars > 0 ? "Level complete!" : "Keep practicing!";
   $("res-stars").textContent = "★".repeat(stars) + "☆".repeat(3 - stars);
   $("res-score").textContent = game.score + " pts";
@@ -463,9 +591,12 @@ function loop() {
 $("btn-skip").onclick = () => resolve(false);
 $("btn-quit").onclick = () => { cancelAnimationFrame(rafId); show("menu"); renderMenu(); };
 $("btn-retry").onclick = () => startLevel(game.level);
-$("btn-menu").onclick = () => { show("menu"); renderMenu(); };
+$("btn-menu").onclick = () => { show("menu"); renderMenu(); greet(); };
+$("btn-progress").onclick = () => { renderProgress(); show("progress"); };
+$("btn-progress-back").onclick = () => { show("menu"); renderMenu(); greet(); };
 
 renderMenu();
+greet();
 </script>
 </body>
 </html>
