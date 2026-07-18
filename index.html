@@ -87,8 +87,11 @@
 
   /* Level select */
   .stage-head { display: flex; justify-content: space-between; align-items: baseline;
-    margin: 22px 0 10px; padding-bottom: 6px; border-bottom: 1px solid #2c3247; }
-  .stage-head h2 { font-size: 1.05rem; }
+    margin: 22px 0 10px; padding-bottom: 6px; border-bottom: 1px solid #2c3247;
+    cursor: pointer; user-select: none; }
+  .stage-head:hover h2 { color: var(--accent); }
+  .stage-head h2 { font-size: 1.05rem; transition: color .1s; }
+  .stage-head .chev { display: inline-block; width: 1.1em; color: var(--muted); }
   .stage-head .stage-stars { font-size: .8rem; color: var(--accent); font-weight: 700; }
   .stage-head .stage-locked { font-size: .8rem; color: var(--muted); }
   .levels { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px,1fr)); gap: 12px; margin-top: 12px; }
@@ -607,24 +610,43 @@ const STAGES = [
   { name: "🏆 Stage 5 · Mastery",                match: lv => !lv.mode && !!lv.win },
 ];
 
+let collapsed = null;
+try { collapsed = JSON.parse(localStorage.getItem("fh-collapsed") || "null"); } catch (e) {}
+function saveCollapsed() { try { localStorage.setItem("fh-collapsed", JSON.stringify(collapsed)); } catch (e) {} }
+
 function renderMenu() {
   const wrap = $("levels");
   wrap.innerHTML = "";
   wrap.style.display = "block"; // stages manage their own grids
+  // first time: open only the stage currently being worked on
+  if (!collapsed) {
+    collapsed = {};
+    let currentFound = false;
+    STAGES.forEach(stage => {
+      const levels = LEVELS.filter(stage.match);
+      const done = levels.every(lv => (progress[lv.id] || 0) >= 1);
+      const isCurrent = !done && !currentFound;
+      if (isCurrent) currentFound = true;
+      collapsed[stage.name] = !isCurrent;
+    });
+  }
   STAGES.forEach(stage => {
     const levels = LEVELS.filter(stage.match);
     const earned = levels.reduce((a, lv) => a + (progress[lv.id] || 0), 0);
     const firstIdx = LEVELS.indexOf(levels[0]);
     const stageUnlocked = firstIdx === 0 || (progress[LEVELS[firstIdx - 1].id] || 0) >= 1;
+    const isCollapsed = !!collapsed[stage.name];
     const head = document.createElement("div");
     head.className = "stage-head";
-    head.innerHTML = `<h2>${stage.name}</h2>` + (stageUnlocked
+    head.innerHTML = `<h2><span class="chev">${isCollapsed ? "▸" : "▾"}</span>${stage.name}</h2>` + (stageUnlocked
       ? `<span class="stage-stars">★ ${earned}/${levels.length * 3}</span>`
       : `<span class="stage-locked">🔒 finish the previous stage to unlock</span>`);
+    head.onclick = () => { collapsed[stage.name] = !collapsed[stage.name]; saveCollapsed(); renderMenu(); };
     wrap.appendChild(head);
     const grid = document.createElement("div");
     grid.className = "levels";
     grid.style.marginTop = "0";
+    if (isCollapsed) grid.style.display = "none";
     levels.forEach(lv => {
       const i = LEVELS.indexOf(lv);
       const unlocked = i === 0 || (progress[LEVELS[i - 1].id] || 0) >= 1;
