@@ -81,7 +81,7 @@ all chord tones. SVG rendering for the fretboard, chord diagrams, and music hall
 - [x] Token economy, shop, and decoratable music hall
 - [x] Progress dashboard with export/import
 - [x] Scrolling "Guitar Hero"-style song mode — 3 riffs (Smoke on the Water, Seven Nation Army, Ode to Joy) with 50/75/100% speed, metronome count-in, and Perfect/Good timing scores
-- [ ] Metronome / strumming rhythm trainer
+- [x] Metronome / strumming rhythm trainer — 3 patterns (quarters, down-up eighths, folk strum) with accented metronome, strum onset detection, and timing scores
 - [ ] Higher frets (5–12) and full fretboard levels
 
 ## License

@@ -330,6 +330,9 @@ const LEVELS = [
   { id: "smoke", title: "14 · 🎵 Smoke on the Water", desc: "The riff that starts every guitar journey", mode: "song", song: 0 },
   { id: "sna",   title: "15 · 🎵 Seven Nation Army",  desc: "The stadium anthem riff",                   mode: "song", song: 1 },
   { id: "ode",   title: "16 · 🎵 Ode to Joy",         desc: "Beethoven, on your guitar",                 mode: "song", song: 2 },
+  { id: "rh1", title: "17 · 🥁 Steady Quarters",  desc: "Strum on every beat — lock in with the click",      mode: "rhythm", bpm: 80, bars: 8, pattern: ["D","","D","","D","","D",""] },
+  { id: "rh2", title: "18 · 🥁 Down-Up Eighths",  desc: "Constant down-up strumming, eighth notes",          mode: "rhythm", bpm: 76, bars: 8, pattern: ["D","U","D","U","D","U","D","U"] },
+  { id: "rh3", title: "19 · 🥁 The Folk Strum",   desc: "D · D U · U D U — the pattern behind 1000 songs",   mode: "rhythm", bpm: 72, bars: 8, pattern: ["D","","D","U","","U","D","U"] },
 ];
 function fr(strNum) { return [0,1,2,3,4,5].map(f => ({ str: strNum, fret: f })); }
 
@@ -585,6 +588,7 @@ const STAGES = [
   { name: "🎯 Stage 1 · Notes on the Fretboard", match: lv => !lv.mode },
   { name: "🎸 Stage 2 · Chords",                 match: lv => lv.mode === "chordLearn" || lv.mode === "chordStrum" },
   { name: "🎵 Stage 3 · Songs",                  match: lv => lv.mode === "song" },
+  { name: "🥁 Stage 4 · Rhythm",                 match: lv => lv.mode === "rhythm" },
 ];
 
 function renderMenu() {
@@ -783,6 +787,8 @@ function startLevel(level) {
     let rounds;
     if (mode === "song") {
       rounds = SONGS[level.song].notes.length;
+    } else if (mode === "rhythm") {
+      rounds = level.pattern.filter(p => p !== "").length * level.bars;
     } else {
       rounds = mode === "chordLearn" ? 5 : 10;
       const pool = mode === "note" ? level.pool.slice() : level.chords.slice();
@@ -819,6 +825,22 @@ function startLevel(level) {
       const totalBeats = Math.ceil(game.duration / spb);
       for (let b = -4; b <= totalBeats; b++) tickAt(game.startAC + b * spb, b < 0);
     }
+    if (mode === "rhythm") {
+      const bpm = level.bpm * (slow ? 0.8 : 1);
+      const spb = 60 / bpm;
+      game.spb = spb; game.pattern = level.pattern; game.bars = level.bars;
+      game.slotDur = spb / 2;
+      game.strums = [];
+      for (let b = 0; b < level.bars; b++)
+        level.pattern.forEach((p, i) => {
+          if (p !== "") game.strums.push({ time: b * 4 * spb + i * game.slotDur, dir: p, slot: i, bar: b, status: "pending" });
+        });
+      game.duration = level.bars * 4 * spb;
+      game.startAC = audioCtx.currentTime + 4 * spb + 0.3;
+      game.ema = 0; game.lastOnset = -10;
+      for (let b = -4; b < level.bars * 4; b++)
+        tickAt(game.startAC + b * spb, b < 0 || b % 4 === 0); // accent count-in and beat 1
+    }
     show("game");
     nextNote();
     loop();
@@ -853,6 +875,13 @@ function nextNote() {
   if (game.mode === "song") {
     $("prompt-note").textContent = "🎵";
     $("prompt-where").textContent = `${game.song.title} · ${Math.round(game.speed * 100)}% speed`;
+    $("prompt-feedback").textContent = "Get ready…";
+    $("hud-progress").textContent = `0/${game.rounds}`;
+    return;
+  }
+  if (game.mode === "rhythm") {
+    $("prompt-note").textContent = "🥁";
+    $("prompt-where").textContent = `${game.level.desc} · hold any chord you like`;
     $("prompt-feedback").textContent = "Get ready…";
     $("hud-progress").textContent = `0/${game.rounds}`;
     return;
@@ -939,7 +968,7 @@ function endLevel() {
   $("res-title").textContent = stars > 0 ? "Level complete!" : "Keep practicing!";
   $("res-stars").textContent = "★".repeat(stars) + "☆".repeat(3 - stars);
   $("res-score").textContent = game.score + " pts";
-  $("res-detail").textContent = `${game.hits}/${game.rounds} ${game.mode.startsWith("chord") ? "chords" : "notes"} · best streak ${game.bestStreak}` +
+  $("res-detail").textContent = `${game.hits}/${game.rounds} ${game.mode.startsWith("chord") ? "chords" : game.mode === "rhythm" ? "strums" : "notes"} · best streak ${game.bestStreak}` +
     (stars === 0 ? " · get 50%+ to earn a star and unlock the next level" : "");
   show("results");
 }
@@ -1037,12 +1066,101 @@ function songFrame() {
   }
 }
 
+/* ================= Rhythm mode (strumming trainer) ================= */
+const RH_WIN = 0.16, RH_PERFECT = 0.08;
+
+function drawRhythm(now) {
+  const slots = game.pattern.length;
+  const w = 640 / slots, x0 = 40, yMid = BOARD_TOP + BOARD_H / 2;
+  const barTime = 4 * game.spb;
+  const curBar = Math.floor(now / barTime);
+  let el = `<rect x="${x0}" y="${BOARD_TOP - 8}" width="640" height="${BOARD_H + 16}" rx="6" fill="var(--panel2)"/>`;
+  // playhead
+  if (now >= 0 && now < game.duration) {
+    const frac = (now % barTime) / barTime;
+    el += `<rect x="${x0 + frac * 640 - 2}" y="${BOARD_TOP - 8}" width="4" height="${BOARD_H + 16}" fill="var(--accent)" opacity="0.85"/>`;
+  }
+  for (let i = 0; i < slots; i++) {
+    const cx = x0 + i * w + w / 2;
+    if (i % 2 === 0) el += `<text x="${cx}" y="${BOARD_TOP + 8}" text-anchor="middle" fill="var(--muted)" font-size="12">${i / 2 + 1}</text>`;
+    el += `<line x1="${x0 + i * w}" y1="${BOARD_TOP - 8}" x2="${x0 + i * w}" y2="${BOARD_TOP + BOARD_H + 8}" stroke="#333a52" stroke-width="${i % 2 === 0 ? 2 : 1}"/>`;
+    const p = game.pattern[i];
+    if (p === "") continue;
+    const st = game.strums.find(s => s.bar === Math.min(curBar, game.bars - 1) && s.slot === i);
+    const col = !st || st.status === "pending" ? "var(--text)" : st.status === "hit" ? "var(--accent2)" : "var(--danger)";
+    el += `<text x="${cx}" y="${yMid + 18}" text-anchor="middle" fill="${col}" font-size="46" font-weight="800">${p === "D" ? "↓" : "↑"}</text>`;
+    el += `<text x="${cx}" y="${yMid + 44}" text-anchor="middle" fill="var(--muted)" font-size="12">${p}</text>`;
+  }
+  el += `<text x="${x0 + 640}" y="${BOARD_TOP + BOARD_H + 26}" text-anchor="end" fill="var(--muted)" font-size="12">bar ${Math.max(1, Math.min(curBar + 1, game.bars))}/${game.bars}</text>`;
+  $("board").innerHTML = el;
+}
+
+function rhythmFrame() {
+  const now = audioCtx.currentTime - game.startAC;
+  $("timer-fill").style.width = Math.max(0, Math.min(100, 100 * (1 - now / game.duration))) + "%";
+  drawRhythm(now);
+  if (now < 0) {
+    $("prompt-note").textContent = Math.ceil(-now / game.spb);
+    $("prompt-feedback").textContent = "Count-in…";
+    return;
+  }
+  $("prompt-note").textContent = "🥁";
+
+  // misses
+  game.strums.forEach(s => {
+    if (s.status === "pending" && now > s.time + RH_WIN) {
+      s.status = "miss";
+      game.streak = 0;
+      $("hud-streak").textContent = game.streak;
+    }
+  });
+
+  // onset detection: RMS spike over its running average
+  analyser.getFloatTimeDomainData(buf);
+  let rms = 0;
+  for (let i = 0; i < buf.length; i++) rms += buf[i] * buf[i];
+  rms = Math.sqrt(rms / buf.length);
+  const isOnset = rms > 0.035 && rms > game.ema * 2.5 && (now - game.lastOnset) > 0.18;
+  game.ema = game.ema * 0.95 + rms * 0.05;
+  if (isOnset) {
+    game.lastOnset = now;
+    const cand = game.strums.find(s => s.status === "pending" && Math.abs(now - s.time) <= RH_WIN);
+    if (cand) {
+      cand.status = "hit";
+      game.hits++;
+      game.streak++;
+      game.bestStreak = Math.max(game.bestStreak, game.streak);
+      const perfect = Math.abs(now - cand.time) <= RH_PERFECT;
+      const mult = 1 + Math.min(game.streak - 1, 4) * 0.25;
+      const pts = Math.round((perfect ? 150 : 100) * mult);
+      game.score += pts;
+      $("prompt-feedback").textContent = `${perfect ? "🎯 PERFECT!" : "✓ Good!"} +${pts}`;
+      $("hud-score").textContent = game.score;
+      $("hud-streak").textContent = game.streak;
+      $("hud-progress").textContent = `${game.hits}/${game.rounds}`;
+    } else {
+      game.streak = 0;
+      $("hud-streak").textContent = game.streak;
+      $("prompt-feedback").textContent = "Extra strum — follow the arrows!";
+    }
+  }
+
+  if (now > game.duration + 0.3) {
+    game.state = "resolved";
+    endLevel();
+  }
+}
+
 function loop() {
   rafId = requestAnimationFrame(loop);
   if (!game || !micReady) return;
 
   if (game.mode === "song") {
     if (game.state === "waiting") songFrame();
+    return;
+  }
+  if (game.mode === "rhythm") {
+    if (game.state === "waiting") rhythmFrame();
     return;
   }
 
@@ -1127,7 +1245,7 @@ function loop() {
 }
 
 /* ================= Buttons ================= */
-$("btn-skip").onclick = () => { if (game && game.mode !== "song") resolve(false); };
+$("btn-skip").onclick = () => { if (game && (game.mode === "note" || game.mode.startsWith("chord"))) resolve(false); };
 $("btn-quit").onclick = () => { stopTicks(); cancelAnimationFrame(rafId); show("menu"); renderMenu(); greet(); };
 $("btn-retry").onclick = () => startLevel(game.level);
 $("btn-menu").onclick = () => { show("menu"); renderMenu(); greet(); };
